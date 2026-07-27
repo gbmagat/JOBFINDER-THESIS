@@ -1,0 +1,290 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="5840" height="900" viewBox="0 0 5840 900">
+  <style>
+    text { font-family: Manrope, Arial, sans-serif; fill: #0B1F3A; }
+    .white { fill: #FFFFFF; }
+    .navy { fill: #0B1F3A; }
+    .blue { fill: #1D4ED8; }
+    .blue600 { fill: #2563EB; }
+    .blue100 { fill: #DBEAFE; }
+    .blue50 { fill: #EFF6FF; }
+    .green { fill: #167347; }
+    .muted { fill: #1E3A8A; }
+    .on-dark { fill: #FFFFFF; }
+    .on-dark-muted { fill: #BFDBFE; }
+    .h1 { font-size: 30px; font-weight: 700; }
+    .h2 { font-size: 20px; font-weight: 700; }
+    .h3 { font-size: 16px; font-weight: 700; }
+    .body { font-size: 14px; font-weight: 400; }
+    .small { font-size: 12px; font-weight: 400; }
+    .label { font-size: 12px; font-weight: 600; }
+    .metric { font-size: 26px; font-weight: 700; fill: #1D4ED8; }
+    .border { stroke: #BFDBFE; stroke-width: 1; }
+    .divider { stroke: #DBEAFE; stroke-width: 1; }
+  </style>
+
+  <!-- 01: Recommendations -->
+  <g id="desktop-recommendations">
+    <rect width="1440" height="900" rx="28" class="white"/>
+    <rect width="252" height="900" class="navy"/>
+    <text x="24" y="55" class="h2 on-dark">JobFinder</text>
+    <text x="24" y="96" class="body on-dark-muted">Job seeker workspace</text>
+    <rect x="16" y="120" width="220" height="44" rx="10" fill="#1E40AF"/>
+    <text x="32" y="148" class="body on-dark">Home</text>
+    <text x="32" y="198" class="body on-dark-muted">Search jobs</text>
+    <text x="32" y="242" class="body on-dark-muted">Saved jobs</text>
+    <text x="32" y="286" class="body on-dark-muted">Applications</text>
+    <text x="32" y="330" class="body on-dark-muted">Profile</text>
+    <text x="32" y="842" class="small on-dark-muted">gabrieljr's team</text>
+
+    <text x="292" y="58" class="h1">Good morning, Gab</text>
+    <text x="292" y="86" class="body muted">Find work that fits your skills and commute.</text>
+    <rect x="1098" y="30" width="302" height="48" rx="12" class="white border"/>
+    <text x="1120" y="60" class="body muted">⌕  Search jobs, skills, or employers</text>
+
+    <rect x="292" y="116" width="250" height="112" rx="16" class="white border"/>
+    <text x="314" y="146" class="small muted">Strong matches</text>
+    <text x="314" y="188" class="metric">18</text>
+    <text x="314" y="210" class="small muted">Within your commute limit</text>
+    <rect x="558" y="116" width="250" height="112" rx="16" class="white border"/>
+    <text x="580" y="146" class="small muted">Saved jobs</text>
+    <text x="580" y="188" class="metric">7</text>
+    <text x="580" y="210" class="small muted">Ready to revisit</text>
+    <rect x="824" y="116" width="250" height="112" rx="16" class="white border"/>
+    <text x="846" y="146" class="small muted">Active applications</text>
+    <text x="846" y="188" class="metric">3</text>
+    <text x="846" y="210" class="small muted">One shortlisted</text>
+
+    <text x="292" y="276" class="h2">Best matches</text>
+    <text x="1260" y="276" class="body blue">See all matches</text>
+
+    <rect x="292" y="304" width="760" height="260" rx="18" class="white border"/>
+    <text x="320" y="344" class="h2">IT Support Assistant</text>
+    <text x="320" y="370" class="body muted">Lumina Tech · Angeles City · Full-time</text>
+    <rect x="886" y="326" width="138" height="34" rx="17" class="green"/>
+    <text x="916" y="348" class="label on-dark">91% match</text>
+    <rect x="320" y="396" width="118" height="32" rx="16" class="blue100"/>
+    <text x="340" y="416" class="label blue">Skill fit 95%</text>
+    <rect x="450" y="396" width="154" height="32" rx="16" class="blue100"/>
+    <text x="470" y="416" class="label blue">5.2 km · 18 min</text>
+    <text x="320" y="456" class="body muted">Your Java and troubleshooting skills are closely related to this role's requirements.</text>
+    <text x="320" y="484" class="small muted">Ontology evidence: Java → Programming · Troubleshooting → Technical Support</text>
+    <rect x="320" y="512" width="164" height="42" rx="10" class="blue"/>
+    <text x="354" y="538" class="label on-dark">View job details →</text>
+    <rect x="500" y="512" width="126" height="42" rx="10" class="white border"/>
+    <text x="538" y="538" class="label blue">Save job</text>
+
+    <rect x="292" y="584" width="760" height="120" rx="16" class="white border"/>
+    <text x="320" y="620" class="h3">Customer Service Associate</text>
+    <text x="320" y="646" class="body muted">Northpoint Café · Balibago</text>
+    <text x="320" y="676" class="small muted">88% match · 3.1 km · 12 min</text>
+    <text x="932" y="652" class="label blue">View →</text>
+
+    <rect x="1080" y="304" width="320" height="400" rx="18" class="white border"/>
+    <text x="1104" y="344" class="h3">Your matching preferences</text>
+    <text x="1104" y="380" class="small muted">Commute limit</text>
+    <text x="1104" y="405" class="body">35 minutes</text>
+    <line x1="1104" y1="428" x2="1376" y2="428" class="divider"/>
+    <text x="1104" y="462" class="small muted">Preferred work types</text>
+    <rect x="1104" y="482" width="82" height="30" rx="15" class="blue100"/>
+    <text x="1125" y="501" class="small blue">Full-time</text>
+    <rect x="1196" y="482" width="76" height="30" rx="15" class="blue100"/>
+    <text x="1216" y="501" class="small blue">Hybrid</text>
+    <text x="1104" y="552" class="small muted">Top skills</text>
+    <text x="1104" y="580" class="body">Java · Troubleshooting</text>
+    <text x="1104" y="606" class="body">Windows · Communication</text>
+    <rect x="1104" y="640" width="154" height="40" rx="10" class="white border"/>
+    <text x="1138" y="665" class="label blue">Edit preferences</text>
+  </g>
+
+  <!-- 02: Search -->
+  <g id="desktop-search" transform="translate(1460,0)">
+    <rect width="1440" height="900" rx="28" class="white"/>
+    <rect width="252" height="900" class="navy"/>
+    <text x="24" y="55" class="h2 on-dark">JobFinder</text>
+    <text x="24" y="96" class="body on-dark-muted">Job seeker workspace</text>
+    <text x="32" y="148" class="body on-dark-muted">Home</text>
+    <rect x="16" y="170" width="220" height="44" rx="10" fill="#1E40AF"/>
+    <text x="32" y="198" class="body on-dark">Search jobs</text>
+    <text x="32" y="248" class="body on-dark-muted">Saved jobs</text>
+    <text x="32" y="292" class="body on-dark-muted">Applications</text>
+    <text x="32" y="336" class="body on-dark-muted">Profile</text>
+
+    <text x="292" y="58" class="h1">Search local jobs</text>
+    <text x="292" y="86" class="body muted">Filter by skill, work type, pay, and travel limit.</text>
+    <rect x="292" y="116" width="760" height="52" rx="12" class="white border"/>
+    <text x="316" y="148" class="body muted">⌕  customer service</text>
+    <rect x="1068" y="116" width="138" height="52" rx="12" class="blue"/>
+    <text x="1114" y="148" class="label on-dark">Search</text>
+    <rect x="1220" y="116" width="180" height="52" rx="12" class="white border"/>
+    <text x="1260" y="148" class="label blue">Map view</text>
+
+    <rect x="292" y="198" width="248" height="590" rx="16" class="white border"/>
+    <text x="316" y="234" class="h3">Filters</text>
+    <text x="316" y="276" class="small muted">Maximum commute</text>
+    <text x="316" y="304" class="body">35 minutes</text>
+    <line x1="316" y1="328" x2="516" y2="328" class="divider"/>
+    <text x="316" y="366" class="small muted">Work type</text>
+    <text x="316" y="398" class="body">☑ Full-time</text>
+    <text x="316" y="430" class="body">☐ Part-time</text>
+    <text x="316" y="462" class="body">☑ Hybrid</text>
+    <text x="316" y="494" class="body">☐ Remote</text>
+    <text x="316" y="538" class="small muted">Minimum pay</text>
+    <text x="316" y="568" class="body">₱18,000 / month</text>
+    <text x="316" y="612" class="small muted">Required skills</text>
+    <rect x="316" y="630" width="94" height="30" rx="15" class="blue100"/>
+    <text x="338" y="649" class="small blue">Java</text>
+    <rect x="316" y="670" width="138" height="30" rx="15" class="blue100"/>
+    <text x="334" y="689" class="small blue">Communication</text>
+    <text x="316" y="750" class="label blue">Clear all filters</text>
+
+    <text x="568" y="220" class="h2">24 matching opportunities</text>
+    <text x="1240" y="220" class="small muted">Sort: Best match</text>
+    <rect x="568" y="248" width="832" height="156" rx="16" class="white border"/>
+    <text x="594" y="282" class="h3">Customer Service Associate</text>
+    <text x="594" y="308" class="body muted">Northpoint Café · Balibago · Full-time</text>
+    <rect x="1258" y="270" width="116" height="32" rx="16" class="green"/>
+    <text x="1282" y="290" class="label on-dark">88% match</text>
+    <text x="594" y="344" class="small muted">Communication and service skills matched · 3.1 km · 12 min</text>
+    <text x="1288" y="374" class="label blue">View details →</text>
+    <rect x="568" y="422" width="832" height="156" rx="16" class="white border"/>
+    <text x="594" y="456" class="h3">Front Desk Associate</text>
+    <text x="594" y="482" class="body muted">Hotel Nueve · Clark · Full-time</text>
+    <rect x="1258" y="444" width="116" height="32" rx="16" class="blue100"/>
+    <text x="1282" y="464" class="label blue">84% match</text>
+    <text x="594" y="518" class="small muted">Customer support and Windows skills matched · 4.6 km · 16 min</text>
+    <text x="1288" y="548" class="label blue">View details →</text>
+    <rect x="568" y="596" width="832" height="156" rx="16" class="white border"/>
+    <text x="594" y="630" class="h3">Service Crew</text>
+    <text x="594" y="656" class="body muted">Pampanga Eats · Cutcut · Part-time</text>
+    <rect x="1258" y="618" width="116" height="32" rx="16" class="blue100"/>
+    <text x="1282" y="638" class="label blue">81% match</text>
+    <text x="594" y="692" class="small muted">Communication skills matched · 5.8 km · 21 min</text>
+    <text x="1288" y="722" class="label blue">View details →</text>
+  </g>
+
+  <!-- 03: Job Detail -->
+  <g id="desktop-job-detail" transform="translate(2920,0)">
+    <rect width="1440" height="900" rx="28" class="white"/>
+    <rect width="252" height="900" class="navy"/>
+    <text x="24" y="55" class="h2 on-dark">JobFinder</text>
+    <text x="24" y="96" class="body on-dark-muted">Job seeker workspace</text>
+    <text x="32" y="148" class="body on-dark-muted">Home</text>
+    <rect x="16" y="170" width="220" height="44" rx="10" fill="#1E40AF"/>
+    <text x="32" y="198" class="body on-dark">Search jobs</text>
+    <text x="32" y="248" class="body on-dark-muted">Saved jobs</text>
+    <text x="32" y="292" class="body on-dark-muted">Applications</text>
+    <text x="32" y="336" class="body on-dark-muted">Profile</text>
+
+    <text x="292" y="50" class="small blue">← Back to search</text>
+    <text x="292" y="96" class="h1">IT Support Assistant</text>
+    <text x="292" y="126" class="body muted">Lumina Tech · Angeles City · Full-time</text>
+    <rect x="1162" y="54" width="104" height="34" rx="17" class="green"/>
+    <text x="1184" y="76" class="label on-dark">91% match</text>
+    <rect x="1280" y="52" width="120" height="38" rx="10" class="white border"/>
+    <text x="1320" y="76" class="label blue">Save</text>
+
+    <rect x="292" y="158" width="718" height="268" rx="18" class="blue50 border"/>
+    <text x="318" y="198" class="h2">Why this matches you</text>
+    <text x="870" y="198" class="label blue">Transparent evidence</text>
+    <rect x="318" y="224" width="198" height="94" rx="14" class="white"/>
+    <text x="340" y="254" class="metric">95%</text>
+    <text x="340" y="284" class="small muted">Skill fit</text>
+    <rect x="532" y="224" width="198" height="94" rx="14" class="white"/>
+    <text x="554" y="254" class="metric">18 min</text>
+    <text x="554" y="284" class="small muted">Estimated commute</text>
+    <rect x="746" y="224" width="238" height="94" rx="14" class="white"/>
+    <text x="768" y="254" class="h3">5.2 km</text>
+    <text x="768" y="284" class="small muted">Within your 35-minute limit</text>
+    <text x="318" y="352" class="body muted">Related skill found: Java → Programming. You meet 4 of 5 core skills.</text>
+    <text x="318" y="382" class="small muted">Missing or optional: basic network certification.</text>
+
+    <rect x="292" y="450" width="718" height="292" rx="18" class="white border"/>
+    <text x="318" y="490" class="h2">Role requirements</text>
+    <text x="318" y="530" class="body">• Troubleshooting Windows devices and user accounts</text>
+    <text x="318" y="564" class="body">• Customer support and clear technical communication</text>
+    <text x="318" y="598" class="body">• Basic networking and workstation maintenance</text>
+    <text x="318" y="646" class="h3">About Lumina Tech</text>
+    <text x="318" y="676" class="body muted">Local technology services company serving businesses across Angeles City.</text>
+    <text x="318" y="712" class="label blue">View employer profile →</text>
+
+    <rect x="1034" y="158" width="366" height="584" rx="18" class="white border"/>
+    <text x="1062" y="198" class="h2">Apply for this role</text>
+    <text x="1062" y="230" class="body muted">Your profile is ready to submit.</text>
+    <rect x="1062" y="260" width="310" height="122" rx="14" class="blue50"/>
+    <text x="1084" y="294" class="h3">Shortest route to work</text>
+    <text x="1084" y="326" class="body">Jeep + short walk</text>
+    <text x="1084" y="354" class="small muted">5.2 km · 18 min · ₱26 estimated</text>
+    <text x="1062" y="424" class="small muted">Application profile</text>
+    <text x="1062" y="454" class="body">Gabriel Jr. · Job seeker</text>
+    <text x="1062" y="482" class="body">4 selected skills · Resume attached</text>
+    <rect x="1062" y="526" width="310" height="48" rx="12" class="blue"/>
+    <text x="1180" y="556" class="label on-dark">Apply now</text>
+    <rect x="1062" y="590" width="310" height="48" rx="12" class="white border"/>
+    <text x="1168" y="620" class="label blue">View route</text>
+    <text x="1062" y="676" class="small muted">JobFinder recommends and explains; the employer makes all hiring decisions.</text>
+  </g>
+
+  <!-- 04: Applications -->
+  <g id="desktop-applications" transform="translate(4380,0)">
+    <rect width="1440" height="900" rx="28" class="white"/>
+    <rect width="252" height="900" class="navy"/>
+    <text x="24" y="55" class="h2 on-dark">JobFinder</text>
+    <text x="24" y="96" class="body on-dark-muted">Job seeker workspace</text>
+    <text x="32" y="148" class="body on-dark-muted">Home</text>
+    <text x="32" y="192" class="body on-dark-muted">Search jobs</text>
+    <text x="32" y="236" class="body on-dark-muted">Saved jobs</text>
+    <rect x="16" y="258" width="220" height="44" rx="10" fill="#1E40AF"/>
+    <text x="32" y="286" class="body on-dark">Applications</text>
+    <text x="32" y="336" class="body on-dark-muted">Profile</text>
+
+    <text x="292" y="58" class="h1">Applications</text>
+    <text x="292" y="86" class="body muted">Track the progress of jobs you applied to.</text>
+    <rect x="1080" y="34" width="320" height="46" rx="12" class="white border"/>
+    <text x="1104" y="62" class="body muted">⌕  Search your applications</text>
+
+    <rect x="292" y="116" width="250" height="112" rx="16" class="white border"/>
+    <text x="314" y="146" class="small muted">Submitted</text>
+    <text x="314" y="188" class="metric">3</text>
+    <rect x="558" y="116" width="250" height="112" rx="16" class="white border"/>
+    <text x="580" y="146" class="small muted">Under review</text>
+    <text x="580" y="188" class="metric">2</text>
+    <rect x="824" y="116" width="250" height="112" rx="16" class="white border"/>
+    <text x="846" y="146" class="small muted">Shortlisted</text>
+    <text x="846" y="188" class="metric">1</text>
+
+    <rect x="292" y="260" width="1108" height="490" rx="18" class="white border"/>
+    <text x="318" y="300" class="h2">Application history</text>
+    <text x="1268" y="300" class="small muted">Updated today</text>
+    <line x1="318" y1="326" x2="1374" y2="326" class="divider"/>
+    <text x="318" y="360" class="label muted">ROLE</text>
+    <text x="790" y="360" class="label muted">APPLIED</text>
+    <text x="976" y="360" class="label muted">STATUS</text>
+    <text x="1270" y="360" class="label muted">ACTION</text>
+
+    <text x="318" y="410" class="h3">IT Support Assistant</text>
+    <text x="318" y="436" class="small muted">Lumina Tech · Angeles City</text>
+    <text x="790" y="420" class="body">18 Jul 2026</text>
+    <rect x="976" y="394" width="128" height="32" rx="16" class="blue100"/>
+    <text x="1000" y="414" class="label blue">Under review</text>
+    <text x="1270" y="420" class="label blue">View →</text>
+    <line x1="318" y1="466" x2="1374" y2="466" class="divider"/>
+
+    <text x="318" y="510" class="h3">Customer Service Associate</text>
+    <text x="318" y="536" class="small muted">Northpoint Café · Balibago</text>
+    <text x="790" y="520" class="body">15 Jul 2026</text>
+    <rect x="976" y="494" width="112" height="32" rx="16" class="green"/>
+    <text x="1000" y="514" class="label on-dark">Shortlisted</text>
+    <text x="1270" y="520" class="label blue">View →</text>
+    <line x1="318" y1="566" x2="1374" y2="566" class="divider"/>
+
+    <text x="318" y="610" class="h3">Front Desk Associate</text>
+    <text x="318" y="636" class="small muted">Hotel Nueve · Clark</text>
+    <text x="790" y="620" class="body">12 Jul 2026</text>
+    <rect x="976" y="594" width="108" height="32" rx="16" class="blue100"/>
+    <text x="1000" y="614" class="label blue">Submitted</text>
+    <text x="1270" y="620" class="label blue">View →</text>
+    <line x1="318" y1="666" x2="1374" y2="666" class="divider"/>
+
+    <text x="318" y="712" class="small muted">Application updates are recorded for transparency. Employers control review and hiring decisions.</text>
+  </g>
+</svg>

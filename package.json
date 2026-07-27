@@ -1,0 +1,11 @@
+{
+  "name": "jobfinder-thesis",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "test": "npm --prefix frontend run test",
+    "check": "npm --prefix frontend run check",
+    "build": "npm --prefix frontend run build"
+  }
+}

@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build and test outputs
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/*.tsbuildinfo
+
+# Local QA browser profile and cache
+frontend/.qa/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Private project plans
+JOBFINDER_FIGMA_HIGH_FIDELITY_PLAN.md
+JOBFINDER_FRONTEND_BLUEPRINT.md

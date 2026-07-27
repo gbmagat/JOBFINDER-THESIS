@@ -1,0 +1,311 @@
+{
+  "runId": "jobfinder-hifi-2026-07-26",
+  "phase": "complete",
+  "step": "scope-v4-public-browse-auth-on-apply",
+  "completedSteps": [
+    "phase0/discovery",
+    "phase1/foundations",
+    "phase2/pages",
+    "phase2/documentation",
+    "phase2/visual-validation",
+    "phase3/components",
+    "phase3/component-catalog",
+    "phase3/prototypes",
+    "phase4/accessibility",
+    "phase4/final-audit",
+    "phase5/dark-blue-palette",
+    "phase5/mobile-white-background-validation",
+    "phase6/job-seeker-desktop-layout",
+    "phase6/job-seeker-desktop-svg-validation",
+    "phase6/job-seeker-desktop-figma-import",
+    "phase6/job-seeker-desktop-prototype",
+    "phase6/job-seeker-desktop-screenshot-audit",
+    "phase7/frontend-framework-research",
+    "phase7/reference-product-benchmarking",
+    "phase7/responsive-screen-expansion",
+    "phase7/non-happy-path-states",
+    "phase7/employer-posting-wizard",
+    "phase7/map-list-experience",
+    "phase7/interaction-state-documentation",
+    "phase7/prototype-expansion",
+    "phase7/final-visual-and-structural-audit",
+    "phase8/remove-peso-admin-role",
+    "phase8/archive-former-admin-screens",
+    "phase8/direct-employer-publishing",
+    "phase8/peso-lgu-dataset-provenance",
+    "phase8/two-role-documentation",
+    "phase8/active-screen-and-prototype-audit",
+    "phase9/public-anonymous-discovery",
+    "phase9/mobile-sign-in-to-apply",
+    "phase9/desktop-sign-in-to-apply-dialog",
+    "phase9/return-to-job-prototype",
+    "phase9/public-protected-route-documentation",
+    "phase9/visual-validation"
+  ],
+  "entities": {
+    "collections": {
+      "primitives": "VariableCollectionId:3:2",
+      "semanticColors": "VariableCollectionId:3:13",
+      "layout": "VariableCollectionId:3:24"
+    },
+    "palette": {
+      "name": "JobFinder Dark Blue",
+      "shades": [
+        "color/blue-50",
+        "color/blue-100",
+        "color/blue-200",
+        "color/blue-300",
+        "color/blue-400",
+        "color/blue-500",
+        "color/blue-600",
+        "color/blue-700",
+        "color/blue-800",
+        "color/blue-900",
+        "color/blue-950"
+      ],
+      "canvas": "color/white",
+      "surface": "color/white",
+      "primaryText": "color/blue-950",
+      "secondaryText": "color/blue-900",
+      "primaryAction": "color/blue-700",
+      "border": "color/blue-200"
+    },
+    "pages": {
+      "cover": "17:2",
+      "gettingStarted": "17:3",
+      "foundations": "4:4",
+      "componentsOverview": "17:5",
+      "buttons": "26:2",
+      "formControls": "31:2",
+      "chipsAndStatus": "37:2",
+      "navigation": "39:2",
+      "contentCards": "42:2",
+      "feedbackStates": "44:2",
+      "selectionAndStepper": "46:2",
+      "routeAndVerificationRows": "47:2",
+      "utilities": "17:7",
+      "jobSeekerMobile": "0:1",
+      "employerDesktop": "4:2",
+      "archivedFormerPesoAdmin": "4:3",
+      "jobSeekerDesktop": "77:7",
+      "frontendV2": "86:2"
+    },
+    "documentationFrames": {
+      "cover": "19:2",
+      "gettingStarted": "20:2",
+      "foundations": "20:43",
+      "componentsCatalog": "48:2",
+      "buttons": "26:3",
+      "formControls": "31:3",
+      "chipsAndStatus": "37:3",
+      "navigation": "39:3",
+      "contentCards": "42:3",
+      "feedbackStates": "44:3",
+      "selectionAndStepper": "46:3",
+      "routeAndVerificationRows": "47:3",
+      "utilities": "23:44"
+    },
+    "componentSets": {
+      "buttons": {
+        "id": "29:2",
+        "variants": 24
+      },
+      "formControls": {
+        "id": "33:79",
+        "variants": 12
+      },
+      "chipsAndStatus": {
+        "id": "37:52",
+        "variants": 12
+      },
+      "navigation": {
+        "id": "41:10",
+        "variants": 4
+      },
+      "contentCards": {
+        "id": "43:52",
+        "variants": 10
+      },
+      "feedbackStates": {
+        "id": "45:82",
+        "variants": 10
+      },
+      "selectionAndStepper": {
+        "id": "46:61",
+        "variants": 8
+      },
+      "routeAndVerificationRows": {
+        "id": "47:94",
+        "variants": 9
+      }
+    },
+    "screens": {
+      "jobSeekerMobile": [
+        "5:2",
+        "6:2",
+        "10:2",
+        "10:53",
+        "10:84",
+        "10:115",
+        "11:2",
+        "11:53",
+        "11:84",
+        "11:135",
+        "86:3",
+        "86:4",
+        "86:5",
+        "86:6"
+      ],
+      "employerDesktop": [
+        "7:2",
+        "13:2",
+        "13:55",
+        "86:8",
+        "86:9"
+      ],
+      "jobSeekerDesktop": [
+        "77:9",
+        "79:76",
+        "79:136",
+        "81:2",
+        "90:188",
+        "114:181"
+      ],
+      "tablet": [
+        "86:7"
+      ]
+    },
+    "prototypeFlows": {
+      "jobSeekerOnboarding": "10:2",
+      "jobSearchAndExplainableMatch": "5:2",
+      "employerPostingAndCandidateMatching": "13:2",
+      "jobSeekerDesktop": "77:9"
+    },
+    "authBoundary": {
+      "publicViews": [
+        "home",
+        "job search",
+        "job detail",
+        "match explanation",
+        "route and accessibility",
+        "dataset-source provenance"
+      ],
+      "protectedViews": [
+        "saved jobs",
+        "applications",
+        "profile and preferences",
+        "employer workspace"
+      ],
+      "applyGateScreens": {
+        "mobile": "10:53",
+        "desktop": "114:181"
+      },
+      "mobileApplyAction": "6:31",
+      "desktopApplyAction": "80:22",
+      "behavior": "Preserve jobId and an allow-listed internal returnTo value; successful sign-in resumes the same application and cancel returns to the same public job detail"
+    },
+    "frontendV2": {
+      "frameworkBlueprint": "JOBFINDER_FRONTEND_BLUEPRINT.md",
+      "figmaPage": "86:2",
+      "interactionStateSheet": "86:10",
+      "researchReferences": [
+        "LinkedIn match insights",
+        "Indeed search preferences",
+        "JobStreet Philippines",
+        "DOLE PhilJobNet",
+        "GOV.UK Design System",
+        "ESCO",
+        "O*NET",
+        "Google Routes"
+      ],
+      "framework": "React + TypeScript + Vite",
+      "productRoles": [
+        "Job seeker",
+        "Employer"
+      ],
+      "externalDataSources": [
+        "PESO",
+        "LGU"
+      ],
+      "scopeRule": "PESO/LGU provide read-only datasets and have no login, workspace, review queue, or approval role",
+      "responsiveViewports": [
+        "390 mobile",
+        "768 tablet",
+        "1440 desktop"
+      ]
+    },
+    "figmaReadyArtifacts": {
+      "jobSeekerDesktop": {
+        "source": "figma-ready/jobseeker-desktop-pov.svg",
+        "preview": "figma-ready/jobseeker-desktop-pov-preview.png",
+        "publicJobDetailPreview": "figma-ready/public-browse-desktop-job-detail.png",
+        "signInToApplyPreview": "figma-ready/public-browse-desktop-sign-in-to-apply.png",
+        "canvas": "9040x900",
+        "screens": [
+          "Desktop / Job Seeker — Recommendations",
+          "Desktop / Job Seeker — Search & Filters",
+          "Desktop / Job Seeker — Job Detail",
+          "Desktop / Job Seeker — Applications",
+          "Desktop / Job Seeker — Map & List",
+          "Desktop / Job Seeker — Sign In to Apply"
+        ],
+        "figmaPage": "77:7",
+        "figmaFrames": [
+          "77:9",
+          "79:76",
+          "79:136",
+          "81:2",
+          "90:188",
+          "114:181"
+        ],
+        "figmaAudit": "figma-ready/jobseeker-desktop-figma-audit.png",
+        "status": "imported as native editable Figma layers and validated"
+      },
+      "publicBrowseMobile": {
+        "welcomePreview": "figma-ready/public-browse-mobile-welcome.png",
+        "jobDetailPreview": "figma-ready/public-browse-mobile-job-detail.png",
+        "signInToApplyFrame": "10:53",
+        "status": "public browsing and contextual sign-in-to-apply flow are editable and visually validated"
+      },
+      "gettingStartedPreview": "figma-ready/public-browse-getting-started.png",
+      "formerPesoAdmin": {
+        "figmaPage": "4:3",
+        "figmaPageName": "99 Archive — Former PESO Admin (Out of Scope)",
+        "hiddenFrames": [
+          "7:55",
+          "13:108"
+        ],
+        "previewArchive": "figma-ready/archive-former-peso-admin",
+        "status": "archived and excluded from active product scope"
+      }
+    }
+  },
+  "audit": {
+    "passed": true,
+    "screens": 26,
+    "screensByViewport": {
+      "mobile": 14,
+      "tablet": 1,
+      "desktop": 11
+    },
+    "componentFamilies": 8,
+    "componentVariants": 89,
+    "localVariables": 38,
+    "darkBluePaletteShades": 11,
+    "whiteScreenBackgrounds": "26/26",
+    "mobileWhiteBackgrounds": "14/14",
+    "prototypeLinks": 43,
+    "prototypeFlows": 4,
+    "mobileTouchTargets": "reviewed across all 14 mobile screens",
+    "typography": "897 visible active-screen text nodes derived from the verified 832-node baseline plus 65 visible auth-flow additions; all added text uses Manrope",
+    "contrast": "5/5 semantic pairs passed",
+    "placeholderText": 0,
+    "missingFonts": 0,
+    "zeroSizeText": 0,
+    "genericComponentNames": 0,
+    "verificationBasis": "Visual QA completed for mobile welcome, mobile job detail, mobile sign-in-to-apply, desktop public job detail, desktop sign-in-to-apply, and Getting Started. Final aggregate counts are derived from the last verified audit plus exact created and mutated nodes because the Figma connector ran out of workspace credits during the final read-only recount."
+  },
+  "pendingValidations": [
+    "Repeat the aggregate Figma connector recount when workspace credits are replenished; no visual or interaction defect is currently known."
+  ]
+}
