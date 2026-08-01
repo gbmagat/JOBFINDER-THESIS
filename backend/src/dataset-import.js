@@ -7,6 +7,21 @@ const APPLICATION_METHODS = new Set([
   "in-person",
 ]);
 const SOURCE_TYPES = new Set(["peso", "lgu"]);
+const EMPLOYMENT_TYPES = new Set([
+  "Full-time",
+  "Part-time",
+  "Contract",
+  "Temporary",
+  "Internship",
+]);
+const WORK_ARRANGEMENTS = new Set(["On-site", "Hybrid", "Remote"]);
+const SALARY_PERIODS = new Set(["hour", "day", "month", "year"]);
+const ROUTE_MODES = new Set([
+  "walk",
+  "motorcycle",
+  "drive",
+  "public-transport",
+]);
 const ACCESSIBILITY_STATUSES = new Set([
   "within-limit",
   "near-limit",
@@ -44,11 +59,21 @@ function date(value, field) {
 
 function texts(value, field, minimumItems = 0) {
   if (!Array.isArray(value)) throw new Error(`${field} must be an array`);
-  const result = value.map((item, index) => text(item, `${field}[${index}]`));
+  const result = [];
+  const seen = new Set();
+  value.forEach((item, index) => {
+    const normalized = text(item, `${field}[${index}]`)
+      .normalize("NFKC")
+      .replace(/\s+/g, " ");
+    const key = normalized.toLocaleLowerCase("en");
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(normalized);
+  });
   if (result.length < minimumItems) {
     throw new Error(`${field} must contain at least ${minimumItems} item`);
   }
-  return [...new Set(result)];
+  return result;
 }
 
 function webUrl(value, field) {
@@ -120,6 +145,26 @@ export function validateAndNormalizeDatasetJob(value) {
   if (typeof salary.negotiable !== "boolean") {
     throw new Error("salary.negotiable must be true or false");
   }
+  const salaryPeriod = text(salary.period, "salary.period");
+  if (!SALARY_PERIODS.has(salaryPeriod)) {
+    throw new Error("salary.period must be hour, day, month, or year");
+  }
+
+  const employmentType = text(job.employmentType, "employmentType");
+  if (!EMPLOYMENT_TYPES.has(employmentType)) {
+    throw new Error("employmentType is invalid");
+  }
+  const workArrangement = text(job.workArrangement, "workArrangement");
+  if (!WORK_ARRANGEMENTS.has(workArrangement)) {
+    throw new Error("workArrangement is invalid");
+  }
+  const openingCount =
+    job.openingCount === undefined
+      ? 1
+      : number(job.openingCount, "openingCount", 1);
+  if (!Number.isInteger(openingCount)) {
+    throw new Error("openingCount must be a whole number");
+  }
 
   const latitude = number(location.latitude, "location.latitude", -90);
   const longitude = number(location.longitude, "location.longitude", -180);
@@ -135,6 +180,10 @@ export function validateAndNormalizeDatasetJob(value) {
   }
   if (typeof route.isEstimate !== "boolean") {
     throw new Error("route.isEstimate must be true or false");
+  }
+  const routeMode = text(route.mode, "route.mode");
+  if (!ROUTE_MODES.has(routeMode)) {
+    throw new Error("route.mode is invalid");
   }
   if (!Array.isArray(route.steps) || route.steps.length === 0) {
     throw new Error("route.steps must contain at least 1 item");
@@ -161,8 +210,9 @@ export function validateAndNormalizeDatasetJob(value) {
     employerName: text(job.employerName, "employerName"),
     summary: text(job.summary, "summary"),
     description: text(job.description, "description"),
-    employmentType: text(job.employmentType, "employmentType"),
-    workArrangement: text(job.workArrangement, "workArrangement"),
+    employmentType,
+    workArrangement,
+    openingCount,
     schedule: text(job.schedule, "schedule"),
     postedAt,
     ...(closingAt ? { closingAt } : {}),
@@ -179,7 +229,7 @@ export function validateAndNormalizeDatasetJob(value) {
       ...salary,
       minimumPhp,
       maximumPhp,
-      period: text(salary.period, "salary.period"),
+      period: salaryPeriod,
       negotiable: salary.negotiable,
     },
     requirements: {
@@ -208,7 +258,7 @@ export function validateAndNormalizeDatasetJob(value) {
     route: {
       ...route,
       routeId: text(route.routeId, "route.routeId"),
-      mode: text(route.mode, "route.mode"),
+      mode: routeMode,
       distanceKm: number(route.distanceKm, "route.distanceKm"),
       estimatedMinutes: number(route.estimatedMinutes, "route.estimatedMinutes"),
       ...(route.estimatedFarePhp === undefined

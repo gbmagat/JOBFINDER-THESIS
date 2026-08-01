@@ -11,13 +11,19 @@ function buildGraph(db) {
 
 function shortestPath(db, startId, destinationId) {
   if (!startId || !destinationId) return null;
+  const nodeIds = new Set(
+    db
+      .prepare("SELECT id FROM geo_nodes")
+      .all()
+      .map((node) => node.id),
+  );
+  if (!nodeIds.has(startId) || !nodeIds.has(destinationId)) return null;
   if (startId === destinationId) return { nodeIds: [startId], edges: [] };
 
   const graph = buildGraph(db);
   const distances = new Map([[startId, 0]]);
   const previous = new Map();
-  const unvisited = new Set(graph.keys());
-  unvisited.add(destinationId);
+  const unvisited = new Set(nodeIds);
 
   while (unvisited.size) {
     let currentId = null;
@@ -128,17 +134,23 @@ export function calculateRoute(db, originNodeId, destinationNodeId, limits = {})
   const firstNode = nodes.get(result.nodeIds[0]);
   const lastNode = nodes.get(result.nodeIds.at(-1));
   const modes = [...new Set(result.edges.map((edge) => edge.mode))];
-  const mode = modes.length === 1 ? modes[0] : "public-transport";
+  const mode = modes.length === 0
+    ? "walk"
+    : modes.length === 1
+      ? modes[0]
+      : "public-transport";
+  const coordinates = result.nodeIds.flatMap((nodeId) => {
+    const node = nodes.get(nodeId);
+    return node ? [[node.longitude, node.latitude]] : [];
+  });
+  if (coordinates.length === 1) coordinates.push([...coordinates[0]]);
 
   return {
     routeId: `route-${originNodeId}-${destinationNodeId}`,
     mode,
     geometry: {
       type: "LineString",
-      coordinates: result.nodeIds.flatMap((nodeId) => {
-        const node = nodes.get(nodeId);
-        return node ? [[node.longitude, node.latitude]] : [];
-      }),
+      coordinates,
     },
     distanceKm,
     estimatedMinutes,

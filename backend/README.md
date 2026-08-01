@@ -80,8 +80,33 @@ npm run import:peso-lgu -- D:\path\to\dataset.json
 The importer derives each internal job ID from the source organization and
 external record ID. Re-importing the same record therefore updates one row. It
 rejects invalid rows, saves an import summary in SQLite, and cannot replace an
-employer-owned job.
+employer-owned job. Imports use incremental upsert behavior: records omitted
+from a later file are not automatically closed. The source dataset must provide
+a closing date or a later update for listings that are no longer available.
 
 The location part of a personalized match uses the stricter ratio between the
 saved distance limit and saved travel-time limit. A short but unusually slow
 route therefore cannot receive an incorrectly high accessibility score.
+
+## Completed backend behavior
+
+- Employer and Job Seeker authentication uses hashed passwords and server-side
+  sessions.
+- Full Job Seeker and company profiles persist in SQLite.
+- Employer jobs validate contract values, salary, openings, supported route
+  nodes, and future application deadlines.
+- A date-only employer deadline is stored as the end of that day in Angeles
+  City time.
+- Required and preferred job skills are added to the searchable skill catalog.
+- Company-name changes update the employer's direct job listings.
+- Job ownership protects applicant lists, status changes, and uploaded resumes.
+- Dataset records keep their PESO/LGU provenance and original application
+  method.
+- Route handling covers indirect, reverse, same-location, boundary, and
+  unreachable cases.
+
+The algorithm code is complete for the current prototype and keeps the thesis's
+70% skill and 30% location formula. Research completion still requires the real
+PESO/LGU job data, a validated 33-barangay Angeles City route graph, a larger
+expert-reviewed skill ontology, and a labeled evaluation set for precision,
+recall, and F1. Those inputs must not be replaced with invented records.

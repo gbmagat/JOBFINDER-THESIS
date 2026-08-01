@@ -50,6 +50,35 @@ test("dataset validation rejects incomplete job shapes", () => {
   }
 });
 
+test("dataset validation enforces contract values and deduplicates skills", () => {
+  const invalidEmploymentType = sourceRecord();
+  invalidEmploymentType.employmentType = "Permanent";
+  assert.throws(
+    () => validateAndNormalizeDatasetJob(invalidEmploymentType),
+    /employmentType is invalid/,
+  );
+
+  const invalidRouteMode = sourceRecord();
+  invalidRouteMode.route.mode = "teleport";
+  assert.throws(
+    () => validateAndNormalizeDatasetJob(invalidRouteMode),
+    /route.mode is invalid/,
+  );
+
+  const duplicated = sourceRecord();
+  duplicated.requirements.requiredSkills = [
+    "Java",
+    " java ",
+    "JAVA",
+    "Customer service",
+  ];
+  const normalized = validateAndNormalizeDatasetJob(duplicated);
+  assert.deepEqual(normalized.requirements.requiredSkills, [
+    "Java",
+    "Customer service",
+  ]);
+});
+
 test("re-importing a source record updates one stable database row", () => {
   const db = createDatabase(":memory:");
   try {
@@ -59,6 +88,8 @@ test("re-importing a source record updates one stable database row", () => {
     const changedRecord = sourceRecord();
     changedRecord.id = "another-client-generated-id";
     changedRecord.title = "Updated Customer Service Associate";
+    changedRecord.requirements.requiredSkills.push("Imported Unique Skill");
+    changedRecord.requirements.preferredSkills.push("Imported Preferred Skill");
     const changed = validateAndNormalizeDatasetJob(changedRecord);
     upsertDatasetJob(db, changed);
 
@@ -67,6 +98,15 @@ test("re-importing a source record updates one stable database row", () => {
     assert.equal(
       db.prepare("SELECT title FROM jobs WHERE id = ?").get(first.id).title,
       "Updated Customer Service Associate",
+    );
+    assert.deepEqual(
+      new Set(
+        db
+          .prepare("SELECT name FROM skills WHERE name LIKE 'Imported %' ORDER BY name")
+          .all()
+          .map((skill) => skill.name),
+      ),
+      new Set(["Imported Preferred Skill", "Imported Unique Skill"]),
     );
   } finally {
     db.close();

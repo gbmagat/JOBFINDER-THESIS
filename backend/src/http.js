@@ -26,7 +26,25 @@ export function validEmail(value) {
   );
 }
 
+export function validHttpUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function numberInRange(value, minimum, maximum, fallback) {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === "string" && !value.trim()) ||
+    typeof value === "boolean"
+  ) {
+    return fallback;
+  }
   const number = Number(value);
   return Number.isFinite(number) && number >= minimum && number <= maximum
     ? number
@@ -35,13 +53,19 @@ export function numberInRange(value, minimum, maximum, fallback) {
 
 export function stringArray(value, maximumItems = 20, maximumLength = 80) {
   if (!Array.isArray(value)) return [];
-  return [
-    ...new Set(
-      value
-        .map((item) => requiredText(item, maximumLength))
-        .filter(Boolean),
-    ),
-  ].slice(0, maximumItems);
+  const result = [];
+  const seen = new Set();
+  for (const item of value) {
+    const text = requiredText(item, maximumLength)
+      .normalize("NFKC")
+      .replace(/\s+/g, " ");
+    const key = text.toLocaleLowerCase("en");
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+    if (result.length === maximumItems) break;
+  }
+  return result;
 }
 
 export function createId(prefix) {

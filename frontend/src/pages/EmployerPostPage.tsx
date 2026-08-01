@@ -363,10 +363,11 @@ export function EmployerPostPage() {
               barangay: draft.barangay,
               schedule: draft.schedule,
               closingAt: draft.deadline,
+              openingCount: draft.openings,
               requiredSkills: skills,
               preferredSkills: [],
-              salaryMinimumPhp: Number(draft.salaryMin),
-              salaryMaximumPhp: Number(draft.salaryMax),
+              salaryMinimumPhp: draft.salaryMin,
+              salaryMaximumPhp: draft.salaryMax,
               status: "active",
               tags: [
                 draft.employmentType,
@@ -574,6 +575,7 @@ export function EmployerPostPage() {
                   <span className="field-label">Number of openings</span>
                   <input
                     className="input"
+                    max="1000"
                     min="1"
                     onChange={(event) =>
                       updateDraft("openings", event.target.value)
@@ -650,6 +652,7 @@ export function EmployerPostPage() {
                             updateDraft("salaryMin", event.target.value)
                           }
                           inputMode="numeric"
+                          required
                           type="number"
                           value={draft.salaryMin}
                         />
@@ -663,6 +666,7 @@ export function EmployerPostPage() {
                             updateDraft("salaryMax", event.target.value)
                           }
                           inputMode="numeric"
+                          required
                           type="number"
                           value={draft.salaryMax}
                         />

@@ -95,6 +95,10 @@ async function register(role, email) {
   };
 }
 
+function futureDeadline(days = 30) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 test("both development demo accounts can sign in", async () => {
   const accounts = [
     { email: demoAccounts.employerEmail, role: "employer" },
@@ -246,15 +250,25 @@ test("an employer can publish a job and review its submitted application", async
       geoNodeId: "nepo-center",
       venue: "Test Company Office",
       barangay: "Sto. Rosario",
-      requiredSkills: ["Technical support"],
-      preferredSkills: ["Customer support"],
+      openingCount: 3,
+      requiredSkills: ["Technical support", "API Test Unique Skill"],
+      preferredSkills: ["Customer support", "API Test Preferred Skill"],
       salaryMinimumPhp: 19000,
       salaryMaximumPhp: 23000,
+      closingAt: futureDeadline().slice(0, 10),
       status: "active",
     }),
   });
   assert.equal(created.response.status, 201);
+  assert.equal(created.body.job.openingCount, 3);
+  assert.ok(Date.parse(created.body.job.closingAt) > Date.now());
   const jobId = created.body.job.id;
+
+  const searchableSkill = await request("/api/skills?query=API%20Test");
+  assert.deepEqual(
+    new Set(searchableSkill.body.skills.map((skill) => skill.name)),
+    new Set(["API Test Preferred Skill", "API Test Unique Skill"]),
+  );
 
   const seeker = await register("job-seeker", "applicant@example.com");
   const seekerHeaders = { cookie: seeker.cookie };
@@ -275,7 +289,9 @@ test("an employer can publish a job and review its submitted application", async
   await request("/api/profile/skills", {
     method: "PUT",
     headers: seekerHeaders,
-    body: JSON.stringify({ skills: ["Technical support"] }),
+    body: JSON.stringify({
+      skills: ["Technical support", "API Test Unique Skill"],
+    }),
   });
   const submitted = await request("/api/applications", {
     method: "POST",
@@ -346,6 +362,205 @@ test("an employer can publish a job and review its submitted application", async
   assert.equal(applications.body.applications[0].status, "Shortlisted");
 });
 
+test("company details persist on the server and rename owned jobs only", async () => {
+  const employer = await register("employer", "company-owner@example.com");
+  const otherEmployer = await register("employer", "other-company@example.com");
+  const created = await request("/api/employer/jobs", {
+    method: "POST",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({
+      title: "Company Identity Test",
+      summary: "Verify company identity updates.",
+      description: "This role checks company profile persistence.",
+      employmentType: "Full-time",
+      workArrangement: "Hybrid",
+      geoNodeId: "balibago-business",
+      openingCount: 2,
+      requiredSkills: ["Company Identity Skill"],
+      salaryMinimumPhp: 20000,
+      salaryMaximumPhp: 24000,
+      closingAt: futureDeadline(),
+      status: "active",
+    }),
+  });
+  assert.equal(created.response.status, 201);
+
+  const saved = await request("/api/employer/company", {
+    method: "PUT",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({
+      companyName: "Renamed Local Company",
+      description: "A local employer profile.",
+      website: "https://company.example",
+      industry: "Information Technology",
+      size: "11-50 employees",
+      email: "careers@company.example",
+      phone: "+63 917 000 0000",
+      street: "123 Test Street",
+      barangay: "Balibago",
+      city: "Angeles City",
+      province: "Pampanga",
+      benefits: "Training\nHealth coverage",
+    }),
+  });
+  assert.equal(saved.response.status, 200);
+  assert.equal(saved.body.company.companyName, "Renamed Local Company");
+  assert.equal(saved.body.company.industry, "Information Technology");
+  assert.equal(saved.body.company.email, "careers@company.example");
+  assert.equal(saved.body.company.benefits, "Training\nHealth coverage");
+
+  const reloaded = await request("/api/employer/company", {
+    headers: { cookie: employer.cookie },
+  });
+  assert.deepEqual(reloaded.body.company, saved.body.company);
+
+  const otherCompany = await request("/api/employer/company", {
+    headers: { cookie: otherEmployer.cookie },
+  });
+  assert.notEqual(otherCompany.body.company.companyName, "Renamed Local Company");
+  assert.equal(otherCompany.body.company.industry, undefined);
+
+  const publicJob = await request(`/api/jobs/${created.body.job.id}`);
+  assert.equal(publicJob.body.job.employerName, "Renamed Local Company");
+  assert.equal(
+    publicJob.body.job.source.organizationName,
+    "Renamed Local Company",
+  );
+
+  const invalidWebsite = await request("/api/employer/company", {
+    method: "PUT",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({
+      companyName: "Renamed Local Company",
+      website: "javascript:alert(1)",
+    }),
+  });
+  assert.equal(invalidWebsite.response.status, 400);
+  assert.match(invalidWebsite.body.error.fields.website, /HTTP or HTTPS/);
+});
+
+test("employer posting rejects blank salaries and invalid contract values", async () => {
+  const employer = await register("employer", "validation-owner@example.com");
+  const input = {
+    title: "Validated Job",
+    summary: "Validate the employer job contract.",
+    description: "A complete job description for validation.",
+    employmentType: "Full-time",
+    workArrangement: "On-site",
+    geoNodeId: "balibago-business",
+    openingCount: 1,
+    requiredSkills: ["Validation Skill"],
+    salaryMinimumPhp: "",
+    salaryMaximumPhp: "25000",
+    closingAt: futureDeadline(),
+    status: "active",
+  };
+
+  const blankSalary = await request("/api/employer/jobs", {
+    method: "POST",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify(input),
+  });
+  assert.equal(blankSalary.response.status, 400);
+  assert.match(blankSalary.body.error.fields.salaryMinimumPhp, /minimum salary/i);
+
+  const invalidType = await request("/api/employer/jobs", {
+    method: "POST",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({
+      ...input,
+      employmentType: "Permanent",
+      salaryMinimumPhp: "20000",
+    }),
+  });
+  assert.equal(invalidType.response.status, 400);
+  assert.match(invalidType.body.error.fields.employmentType, /valid employment type/i);
+
+  const invalidOpenings = await request("/api/employer/jobs", {
+    method: "POST",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({
+      ...input,
+      salaryMinimumPhp: "20000",
+      openingCount: 0,
+    }),
+  });
+  assert.equal(invalidOpenings.response.status, 400);
+  assert.match(invalidOpenings.body.error.fields.openingCount, /1.*1,000/);
+});
+
+test("employers cannot access or mutate another employer's applicants", async () => {
+  const owner = await register("employer", "secure-owner@example.com");
+  const intruder = await register("employer", "other-owner@example.com");
+  const created = await request("/api/employer/jobs", {
+    method: "POST",
+    headers: { cookie: owner.cookie },
+    body: JSON.stringify({
+      title: "Owned Role",
+      summary: "Verify employer ownership boundaries.",
+      description: "Only the owner may review this role's applicants.",
+      employmentType: "Full-time",
+      workArrangement: "On-site",
+      geoNodeId: "nepo-center",
+      requiredSkills: ["Ownership Test"],
+      salaryMinimumPhp: 20000,
+      salaryMaximumPhp: 24000,
+      closingAt: futureDeadline(),
+      status: "active",
+    }),
+  });
+  const seeker = await register("job-seeker", "ownership-seeker@example.com");
+  const submitted = await request("/api/applications", {
+    method: "POST",
+    headers: { cookie: seeker.cookie },
+    body: applicationForm({
+      jobId: created.body.job.id,
+      fullName: "Ownership Seeker",
+      email: "ownership-seeker@example.com",
+      mobileNumber: "09170000003",
+    }),
+  });
+  assert.equal(submitted.response.status, 201);
+
+  const hiddenInbox = await request(
+    `/api/employer/jobs/${created.body.job.id}/applications`,
+    { headers: { cookie: intruder.cookie } },
+  );
+  assert.equal(hiddenInbox.response.status, 404);
+
+  const hiddenJobMutation = await request(
+    `/api/employer/jobs/${created.body.job.id}`,
+    {
+      method: "PATCH",
+      headers: { cookie: intruder.cookie },
+      body: JSON.stringify({ status: "closed" }),
+    },
+  );
+  assert.equal(hiddenJobMutation.response.status, 404);
+
+  const hiddenApplicationMutation = await request(
+    `/api/employer/applications/${submitted.body.application.id}/status`,
+    {
+      method: "PATCH",
+      headers: { cookie: intruder.cookie },
+      body: JSON.stringify({ status: "Shortlisted" }),
+    },
+  );
+  assert.equal(hiddenApplicationMutation.response.status, 404);
+
+  const hiddenResume = await request(
+    `/api/applications/${submitted.body.application.id}/resume`,
+    { headers: { cookie: intruder.cookie } },
+  );
+  assert.equal(hiddenResume.response.status, 403);
+  assert.equal(
+    db
+      .prepare("SELECT status FROM applications WHERE id = ?")
+      .get(submitted.body.application.id).status,
+    "Submitted",
+  );
+});
+
 test("applications require a real PDF upload and upload errors stay client errors", async () => {
   const seeker = await register("job-seeker", "resume-check@example.com");
   const headers = { cookie: seeker.cookie };
@@ -391,27 +606,92 @@ test("applications require a real PDF upload and upload errors stay client error
   assert.equal(invalidJson.body.error.code, "INVALID_JSON");
 });
 
-test("expired jobs are unavailable in public, saved, and application routes", async () => {
+test("deadlines are validated and expired jobs stay unavailable everywhere", async () => {
   const employer = await register("employer", "expired-owner@example.com");
-  const created = await request("/api/employer/jobs", {
+  const jobInput = {
+    title: "Expiring Support Role",
+    summary: "This listing is used to verify closing-date behavior.",
+    description: "A test listing used to verify closing-date behavior.",
+    employmentType: "Full-time",
+    workArrangement: "On-site",
+    geoNodeId: "nepo-center",
+    requiredSkills: ["Technical support"],
+    salaryMinimumPhp: 18000,
+    salaryMaximumPhp: 22000,
+    status: "active",
+  };
+  const rejected = await request("/api/employer/jobs", {
     method: "POST",
     headers: { cookie: employer.cookie },
     body: JSON.stringify({
-      title: "Expired Support Role",
-      summary: "This listing has already closed.",
-      description: "A test listing used to verify closing-date behavior.",
-      employmentType: "Full-time",
-      workArrangement: "On-site",
-      geoNodeId: "nepo-center",
-      requiredSkills: ["Technical support"],
-      salaryMinimumPhp: 18000,
-      salaryMaximumPhp: 22000,
+      ...jobInput,
       closingAt: "2020-01-01T00:00:00.000Z",
-      status: "active",
     }),
+  });
+  assert.equal(rejected.response.status, 400);
+  assert.match(rejected.body.error.fields.closingAt, /future/i);
+
+  const invalidStatus = await request("/api/employer/jobs", {
+    method: "POST",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({
+      ...jobInput,
+      closingAt: futureDeadline(),
+      status: "published",
+    }),
+  });
+  assert.equal(invalidStatus.response.status, 400);
+  assert.match(invalidStatus.body.error.fields.status, /draft or active/i);
+
+  const draft = await request("/api/employer/jobs", {
+    method: "POST",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({ ...jobInput, status: "draft" }),
+  });
+  assert.equal(draft.response.status, 201);
+  const missingActivationDeadline = await request(
+    `/api/employer/jobs/${draft.body.job.id}`,
+    {
+      method: "PATCH",
+      headers: { cookie: employer.cookie },
+      body: JSON.stringify({ status: "active" }),
+    },
+  );
+  assert.equal(missingActivationDeadline.response.status, 400);
+
+  const activated = await request(`/api/employer/jobs/${draft.body.job.id}`, {
+    method: "PATCH",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({
+      status: "active",
+      closingAt: futureDeadline(),
+    }),
+  });
+  assert.equal(activated.response.status, 200);
+  assert.equal(activated.body.job.status, "active");
+  assert.ok(Date.parse(activated.body.job.closingAt) > Date.now());
+  await request(`/api/employer/jobs/${draft.body.job.id}`, {
+    method: "PATCH",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({ status: "closed" }),
+  });
+
+  const created = await request("/api/employer/jobs", {
+    method: "POST",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({ ...jobInput, closingAt: futureDeadline() }),
   });
   assert.equal(created.response.status, 201);
   const jobId = created.body.job.id;
+  db.prepare("UPDATE jobs SET closing_at = ? WHERE id = ?").run(
+    "2020-01-01T00:00:00.000Z",
+    jobId,
+  );
+
+  const overview = await request("/api/employer/overview", {
+    headers: { cookie: employer.cookie },
+  });
+  assert.equal(overview.body.metrics.activePosts, 0);
 
   const detail = await request(`/api/jobs/${jobId}`);
   assert.equal(detail.response.status, 404);

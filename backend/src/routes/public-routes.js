@@ -41,10 +41,12 @@ export function createPublicRouter(db) {
 
   router.get("/data-sources", (_request, response) => {
     const sources = new Map();
-    for (const row of db
-      .prepare("SELECT source_json FROM jobs WHERE status = 'active'")
-      .all()) {
-      const source = JSON.parse(row.source_json);
+    for (const job of db
+      .prepare("SELECT * FROM jobs WHERE status = 'active'")
+      .all()
+      .map(rowToJob)
+      .filter((job) => isJobAvailable(job))) {
+      const source = job.source;
       const key = `${source.origin}:${source.organizationName}:${source.datasetName ?? ""}`;
       if (!sources.has(key)) {
         sources.set(key, {
@@ -89,6 +91,7 @@ export function createPublicRouter(db) {
           job.location.barangay,
           job.location.city,
           ...job.requirements.requiredSkills,
+          ...job.requirements.preferredSkills,
           ...job.tags,
         ]
           .join(" ")

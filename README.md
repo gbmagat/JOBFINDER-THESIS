@@ -1,6 +1,6 @@
-# JobFinder — Version 3.1 Demo Updates
+# JobFinder — Version 3.2 Backend Update
 
-This version connects the responsive React frontend to a Node.js, Express, and SQLite backend. It includes authentication, job-seeker profiles, ontology-based skill matching, geographic accessibility scoring, saved jobs, applications, employer job posts, and applicant review.
+This version completes the current responsive React frontend integration with the Node.js, Express, and SQLite backend. It includes authentication, persistent job-seeker and company profiles, ontology-based skill matching, Dijkstra accessibility routing, saved jobs, applications, validated employer job posts, applicant review, and PESO/LGU dataset importing.
 
 ## Run locally
 

@@ -152,6 +152,7 @@ export interface JobListing {
   employmentType: EmploymentType;
   workArrangement: WorkArrangement;
   schedule?: string;
+  openingCount?: number;
   salary: SalaryRange;
   postedAt: string;
   closingAt?: string;

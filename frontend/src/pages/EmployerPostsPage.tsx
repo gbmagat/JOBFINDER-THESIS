@@ -15,6 +15,7 @@ import { apiRequest } from "../lib/api";
 
 type EmployerApiJob = {
   applicantCount: number;
+  closingAt?: string;
   id: string;
   location: {
     barangay?: string;
@@ -43,6 +44,18 @@ function formatJobLocation(job: EmployerApiJob) {
 
 function formatJobStatus(status: string) {
   return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+}
+
+function effectiveJobStatus(status: string, closingAt?: string) {
+  if (
+    status === "active" &&
+    closingAt &&
+    Number.isFinite(Date.parse(closingAt)) &&
+    Date.parse(closingAt) <= Date.now()
+  ) {
+    return "Expired";
+  }
+  return formatJobStatus(status);
 }
 
 const seededPosts = [
@@ -126,7 +139,7 @@ export function EmployerPostsPage() {
       title: job.title,
       location: formatJobLocation(job),
       publishedAt: job.source?.publishedAt || job.postedAt,
-      status: formatJobStatus(job.status),
+      status: effectiveJobStatus(job.status, job.closingAt),
       applicants: job.applicantCount,
     }));
   }, [apiJobs, localPosts, usesTestData]);
@@ -192,7 +205,15 @@ export function EmployerPostsPage() {
                     </span>
                   </td>
                   <td data-label="Status">
-                    <span className="badge badge--success">{post.status}</span>
+                    <span
+                      className={
+                        post.status === "Active"
+                          ? "badge badge--success"
+                          : "badge badge--outline"
+                      }
+                    >
+                      {post.status}
+                    </span>
                   </td>
                   <td data-label="Applicants">{post.applicants}</td>
                   <td data-label="Actions">
@@ -204,12 +225,14 @@ export function EmployerPostsPage() {
                         <UsersRound size={16} aria-hidden="true" />
                         Candidates
                       </Link>
-                      <Link
-                        className="text-link"
-                        to={`/jobs/${encodeURIComponent(post.id)}`}
-                      >
-                        Public Page
-                      </Link>
+                      {post.status === "Active" ? (
+                        <Link
+                          className="text-link"
+                          to={`/jobs/${encodeURIComponent(post.id)}`}
+                        >
+                          Public Page
+                        </Link>
+                      ) : null}
                     </div>
                   </td>
                   </tr>

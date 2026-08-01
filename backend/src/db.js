@@ -107,6 +107,7 @@ function createSchema(db) {
       employment_type TEXT NOT NULL,
       work_arrangement TEXT NOT NULL,
       schedule TEXT,
+      opening_count INTEGER NOT NULL DEFAULT 1 CHECK (opening_count >= 1),
       salary_json TEXT NOT NULL,
       posted_at TEXT NOT NULL,
       closing_at TEXT,
@@ -162,6 +163,7 @@ function createSchema(db) {
       description TEXT NOT NULL DEFAULT '',
       address TEXT NOT NULL DEFAULT '',
       website TEXT NOT NULL DEFAULT '',
+      details_json TEXT NOT NULL DEFAULT '{}',
       updated_at TEXT NOT NULL
     );
 
@@ -183,6 +185,26 @@ function createSchema(db) {
     CREATE INDEX IF NOT EXISTS applications_applicant_idx
       ON applications(applicant_id, submitted_at DESC);
   `);
+
+  const companyColumns = new Set(
+    db
+      .prepare("PRAGMA table_info(company_profiles)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (!companyColumns.has("details_json")) {
+    db.exec("ALTER TABLE company_profiles ADD COLUMN details_json TEXT NOT NULL DEFAULT '{}'");
+  }
+
+  const jobColumns = new Set(
+    db
+      .prepare("PRAGMA table_info(jobs)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (!jobColumns.has("opening_count")) {
+    db.exec("ALTER TABLE jobs ADD COLUMN opening_count INTEGER NOT NULL DEFAULT 1 CHECK (opening_count >= 1)");
+  }
 }
 
 export function skillId(name) {
@@ -230,6 +252,15 @@ export function findSkillId(db, name) {
   );
 }
 
+function ensureJobSkills(db, job) {
+  for (const name of [
+    ...(job.requirements?.requiredSkills ?? []),
+    ...(job.requirements?.preferredSkills ?? []),
+  ]) {
+    ensureSkill(db, name);
+  }
+}
+
 function seedSkills(db) {
   const insertRelation = db.prepare(`
     INSERT OR REPLACE INTO skill_relations
@@ -271,10 +302,19 @@ function seedGeography(db) {
   `);
 
   const transaction = db.transaction(() => {
+    const nodeNames = new Map(GEO_NODES.map(([id, name]) => [id, name]));
     for (const node of GEO_NODES) insertNode.run(...node);
     for (const edge of GEO_EDGES) {
       insertEdge.run(...edge);
-      insertEdge.run(edge[1], edge[0], ...edge.slice(2));
+      insertEdge.run(
+        edge[1],
+        edge[0],
+        edge[2],
+        edge[3],
+        edge[4],
+        edge[5],
+        `Travel from ${nodeNames.get(edge[1])} toward ${nodeNames.get(edge[0])}.`,
+      );
     }
   });
   transaction();
@@ -282,107 +322,133 @@ function seedGeography(db) {
 
 export function insertJob(db, job, ownerId = null, status = "active") {
   const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO jobs (
-      id, title, employer_name, summary, description, location_json,
-      employment_type, work_arrangement, schedule, salary_json, posted_at,
-      closing_at, requirements_json, route_json, source_json, tags_json,
-      geo_node_id, owner_id, status, created_at, updated_at
-    ) VALUES (
-      @id, @title, @employerName, @summary, @description, @locationJson,
-      @employmentType, @workArrangement, @schedule, @salaryJson, @postedAt,
-      @closingAt, @requirementsJson, @routeJson, @sourceJson, @tagsJson,
-      @geoNodeId, @ownerId, @status, @createdAt, @updatedAt
-    )
-  `).run({
-    id: job.id,
-    title: job.title,
-    employerName: job.employerName,
-    summary: job.summary,
-    description: job.description,
-    locationJson: json(job.location),
-    employmentType: job.employmentType,
-    workArrangement: job.workArrangement,
-    schedule: job.schedule ?? null,
-    salaryJson: json(job.salary),
-    postedAt: job.postedAt ?? now,
-    closingAt: job.closingAt ?? null,
-    requirementsJson: json(job.requirements),
-    routeJson: json(job.route),
-    sourceJson: json(job.source),
-    tagsJson: json(job.tags ?? []),
-    geoNodeId: job.geoNodeId ?? null,
-    ownerId,
-    status,
-    createdAt: now,
-    updatedAt: now,
+  const transaction = db.transaction(() => {
+    ensureJobSkills(db, job);
+    db.prepare(`
+      INSERT INTO jobs (
+        id, title, employer_name, summary, description, location_json,
+        employment_type, work_arrangement, schedule, opening_count, salary_json, posted_at,
+        closing_at, requirements_json, route_json, source_json, tags_json,
+        geo_node_id, owner_id, status, created_at, updated_at
+      ) VALUES (
+        @id, @title, @employerName, @summary, @description, @locationJson,
+        @employmentType, @workArrangement, @schedule, @openingCount, @salaryJson, @postedAt,
+        @closingAt, @requirementsJson, @routeJson, @sourceJson, @tagsJson,
+        @geoNodeId, @ownerId, @status, @createdAt, @updatedAt
+      )
+    `).run({
+      id: job.id,
+      title: job.title,
+      employerName: job.employerName,
+      summary: job.summary,
+      description: job.description,
+      locationJson: json(job.location),
+      employmentType: job.employmentType,
+      workArrangement: job.workArrangement,
+      schedule: job.schedule ?? null,
+      openingCount: job.openingCount ?? 1,
+      salaryJson: json(job.salary),
+      postedAt: job.postedAt ?? now,
+      closingAt: job.closingAt ?? null,
+      requirementsJson: json(job.requirements),
+      routeJson: json(job.route),
+      sourceJson: json(job.source),
+      tagsJson: json(job.tags ?? []),
+      geoNodeId: job.geoNodeId ?? null,
+      ownerId,
+      status,
+      createdAt: now,
+      updatedAt: now,
+    });
   });
+  transaction();
 }
 
 export function upsertDatasetJob(db, job) {
-  const existing = db.prepare("SELECT owner_id FROM jobs WHERE id = ?").get(job.id);
-  if (existing?.owner_id) {
-    throw new Error("A dataset row cannot replace an employer-owned job.");
-  }
-  if (!existing) {
-    insertJob(db, job, null, "active");
-    return;
-  }
+  const transaction = db.transaction(() => {
+    const existing = db.prepare("SELECT owner_id FROM jobs WHERE id = ?").get(job.id);
+    if (existing?.owner_id) {
+      throw new Error("A dataset row cannot replace an employer-owned job.");
+    }
+    if (!existing) {
+      insertJob(db, job, null, "active");
+      return;
+    }
 
-  const now = new Date().toISOString();
-  db.prepare(`
-    UPDATE jobs SET
-      title = @title,
-      employer_name = @employerName,
-      summary = @summary,
-      description = @description,
-      location_json = @locationJson,
-      employment_type = @employmentType,
-      work_arrangement = @workArrangement,
-      schedule = @schedule,
-      salary_json = @salaryJson,
-      posted_at = @postedAt,
-      closing_at = @closingAt,
-      requirements_json = @requirementsJson,
-      route_json = @routeJson,
-      source_json = @sourceJson,
-      tags_json = @tagsJson,
-      geo_node_id = @geoNodeId,
-      owner_id = NULL,
-      status = 'active',
-      updated_at = @updatedAt
-    WHERE id = @id
-  `).run({
-    id: job.id,
-    title: job.title,
-    employerName: job.employerName,
-    summary: job.summary,
-    description: job.description,
-    locationJson: json(job.location),
-    employmentType: job.employmentType,
-    workArrangement: job.workArrangement,
-    schedule: job.schedule ?? null,
-    salaryJson: json(job.salary),
-    postedAt: job.postedAt ?? now,
-    closingAt: job.closingAt ?? null,
-    requirementsJson: json(job.requirements),
-    routeJson: json(job.route),
-    sourceJson: json(job.source),
-    tagsJson: json(job.tags ?? []),
-    geoNodeId: job.geoNodeId ?? null,
-    updatedAt: now,
+    ensureJobSkills(db, job);
+    const now = new Date().toISOString();
+    db.prepare(`
+      UPDATE jobs SET
+        title = @title,
+        employer_name = @employerName,
+        summary = @summary,
+        description = @description,
+        location_json = @locationJson,
+        employment_type = @employmentType,
+        work_arrangement = @workArrangement,
+        schedule = @schedule,
+        opening_count = @openingCount,
+        salary_json = @salaryJson,
+        posted_at = @postedAt,
+        closing_at = @closingAt,
+        requirements_json = @requirementsJson,
+        route_json = @routeJson,
+        source_json = @sourceJson,
+        tags_json = @tagsJson,
+        geo_node_id = @geoNodeId,
+        owner_id = NULL,
+        status = 'active',
+        updated_at = @updatedAt
+      WHERE id = @id
+    `).run({
+      id: job.id,
+      title: job.title,
+      employerName: job.employerName,
+      summary: job.summary,
+      description: job.description,
+      locationJson: json(job.location),
+      employmentType: job.employmentType,
+      workArrangement: job.workArrangement,
+      schedule: job.schedule ?? null,
+      openingCount: job.openingCount ?? 1,
+      salaryJson: json(job.salary),
+      postedAt: job.postedAt ?? now,
+      closingAt: job.closingAt ?? null,
+      requirementsJson: json(job.requirements),
+      routeJson: json(job.route),
+      sourceJson: json(job.source),
+      tagsJson: json(job.tags ?? []),
+      geoNodeId: job.geoNodeId ?? null,
+      updatedAt: now,
+    });
   });
+  transaction();
 }
 
 function seedJobs(db) {
-  const count = db.prepare("SELECT COUNT(*) AS count FROM jobs").get().count;
-  if (count > 0) return;
   const transaction = db.transaction(() => {
     for (const job of SEED_JOBS) {
       const ownerId = job.source.ownerId
         ? db.prepare("SELECT id FROM users WHERE id = ?").get(job.source.ownerId)?.id ?? null
         : null;
-      insertJob(db, job, ownerId);
+      const existing = db
+        .prepare("SELECT id, owner_id, source_json FROM jobs WHERE id = ?")
+        .get(job.id);
+      if (!existing) {
+        insertJob(db, job, ownerId);
+      } else if (ownerId && existing.owner_id !== ownerId) {
+        const existingSource = parse(existing.source_json, {});
+        const isSameSeedRecord =
+          existingSource.origin === job.source.origin &&
+          existingSource.ownerId === job.source.ownerId;
+        if (isSameSeedRecord) {
+          db.prepare("UPDATE jobs SET owner_id = ?, updated_at = ? WHERE id = ?").run(
+            ownerId,
+            new Date().toISOString(),
+            job.id,
+          );
+        }
+      }
     }
   });
   transaction();
@@ -397,9 +463,45 @@ function seedDemoAccounts(db, accounts) {
     .toLowerCase();
   const password = String(accounts?.password ?? "");
   if (!employerEmail || !jobSeekerEmail || password.length < 8) return;
+  if (employerEmail === jobSeekerEmail) {
+    throw new Error("Demo employer and job seeker emails must be different.");
+  }
 
   const now = new Date().toISOString();
   const transaction = db.transaction(() => {
+    const employerId = "mock-employer@luminatech.example";
+    const defaultSeekerId = "demo-job-seeker";
+    const employerEmailOwner = db
+      .prepare("SELECT id, role, display_name FROM users WHERE email = ?")
+      .get(employerEmail);
+    const seekerEmailOwner = db
+      .prepare("SELECT id, role, display_name FROM users WHERE email = ?")
+      .get(jobSeekerEmail);
+    const isLegacyDemoSeeker = Boolean(
+      seekerEmailOwner &&
+        seekerEmailOwner.role === "job-seeker" &&
+        seekerEmailOwner.display_name === "JobFinder Demo User" &&
+        String(seekerEmailOwner.id).startsWith("mock-"),
+    );
+    const seekerId = isLegacyDemoSeeker
+      ? seekerEmailOwner.id
+      : defaultSeekerId;
+    const stableEmployer = db.prepare("SELECT role FROM users WHERE id = ?").get(employerId);
+    const stableSeeker = db.prepare("SELECT role FROM users WHERE id = ?").get(seekerId);
+
+    if (employerEmailOwner && employerEmailOwner.id !== employerId) {
+      throw new Error("The configured demo employer email already belongs to another account.");
+    }
+    if (seekerEmailOwner && seekerEmailOwner.id !== seekerId) {
+      throw new Error("The configured demo job seeker email already belongs to another account.");
+    }
+    if (stableEmployer && stableEmployer.role !== "employer") {
+      throw new Error("The demo employer ID belongs to a different account role.");
+    }
+    if (stableSeeker && stableSeeker.role !== "job-seeker") {
+      throw new Error("The demo job seeker ID belongs to a different account role.");
+    }
+
     db.prepare(`
       INSERT INTO users
         (id, email, password_hash, display_name, role, created_at)
@@ -410,7 +512,7 @@ function seedDemoAccounts(db, accounts) {
         display_name = excluded.display_name,
         role = excluded.role
     `).run(
-      "mock-employer@luminatech.example",
+      employerId,
       employerEmail,
       hashPassword(password),
       "Gabriel Jr.'s Team",
@@ -418,21 +520,38 @@ function seedDemoAccounts(db, accounts) {
     );
     db.prepare(`
       INSERT INTO company_profiles
-        (user_id, company_name, description, address, website, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id) DO NOTHING
+        (user_id, company_name, description, address, website, details_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        website = CASE
+          WHEN company_profiles.website = '' THEN excluded.website
+          ELSE company_profiles.website
+        END,
+        details_json = CASE
+          WHEN company_profiles.details_json = '{}' THEN excluded.details_json
+          ELSE company_profiles.details_json
+        END
     `).run(
-      "mock-employer@luminatech.example",
+      employerId,
       "Lumina Tech Solutions",
       "Local technology support and services company.",
       "Sto. Rosario, Angeles City",
-      "",
+      "https://www.luminatech.example",
+      json({
+        industry: "Information Technology",
+        size: "51-200 employees",
+        email: "careers@luminatech.example",
+        phone: "+63 945 123 4567",
+        street: "4/F Nexus Center, MacArthur Highway",
+        barangay: "Balibago",
+        city: "Angeles City",
+        province: "Pampanga",
+        benefits:
+          "Health coverage\nPaid skills training\nFlexible leave credits\nPerformance incentives",
+      }),
       now,
     );
 
-    const jobSeekerId =
-      db.prepare("SELECT id FROM users WHERE email = ?").get(jobSeekerEmail)?.id ??
-      "demo-job-seeker";
     db.prepare(`
       INSERT INTO users
         (id, email, password_hash, display_name, role, created_at)
@@ -443,7 +562,7 @@ function seedDemoAccounts(db, accounts) {
         display_name = excluded.display_name,
         role = excluded.role
     `).run(
-      jobSeekerId,
+      seekerId,
       jobSeekerEmail,
       hashPassword(password),
       "JobFinder Demo User",
@@ -457,7 +576,7 @@ function seedDemoAccounts(db, accounts) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO NOTHING
     `).run(
-      jobSeekerId,
+      seekerId,
       "JobFinder Demo User",
       "0917 123 4567",
       "Balibago",
@@ -485,7 +604,7 @@ function seedDemoAccounts(db, accounts) {
       "CSS",
       "JavaScript",
     ]) {
-      addSkill.run(jobSeekerId, ensureSkill(db, skillName).id);
+      addSkill.run(seekerId, ensureSkill(db, skillName).id);
     }
   });
   transaction();
@@ -503,6 +622,7 @@ export function rowToJob(row) {
     employmentType: row.employment_type,
     workArrangement: row.work_arrangement,
     schedule: row.schedule ?? undefined,
+    openingCount: row.opening_count ?? 1,
     salary: parse(row.salary_json, {}),
     postedAt: row.posted_at,
     closingAt: row.closing_at ?? undefined,
@@ -532,14 +652,19 @@ export function createDatabase(
   }
 
   const db = new Database(filename);
-  db.pragma("foreign_keys = ON");
-  if (filename !== ":memory:") db.pragma("journal_mode = WAL");
-  createSchema(db);
-  seedSkills(db);
-  seedGeography(db);
-  if (seedDemo) {
-    seedDemoAccounts(db, demoAccounts);
-    seedJobs(db);
+  try {
+    db.pragma("foreign_keys = ON");
+    if (filename !== ":memory:") db.pragma("journal_mode = WAL");
+    createSchema(db);
+    seedSkills(db);
+    seedGeography(db);
+    if (seedDemo) {
+      seedDemoAccounts(db, demoAccounts);
+      seedJobs(db);
+    }
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
   }
-  return db;
 }

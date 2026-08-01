@@ -52,7 +52,16 @@ type CompanyApiResponse = {
     description: string;
     address: string;
     website: string;
-    updatedAt: string;
+    industry?: string;
+    size?: string;
+    email?: string;
+    phone?: string;
+    street?: string;
+    barangay?: string;
+    city?: string;
+    province?: string;
+    benefits?: string;
+    updatedAt: string | null;
   };
 };
 
@@ -192,8 +201,19 @@ function mergeCompanyApiProfile(
     ...deviceProfile,
     ...addressFields,
     name: company.companyName,
+    industry: company.industry ?? deviceProfile.industry,
+    size: company.size ?? deviceProfile.size,
     description: company.description,
     website: company.website,
+    email: company.email ?? deviceProfile.email,
+    phone: company.phone ?? deviceProfile.phone,
+    street: company.street ?? addressFields.street ?? deviceProfile.street,
+    barangay:
+      company.barangay ?? addressFields.barangay ?? deviceProfile.barangay,
+    city: company.city ?? addressFields.city ?? deviceProfile.city,
+    province:
+      company.province ?? addressFields.province ?? deviceProfile.province,
+    benefits: company.benefits ?? deviceProfile.benefits,
   };
 }
 
@@ -300,6 +320,15 @@ export function CompanyProfilePage() {
           description: profile.description,
           address,
           website: profile.website,
+          industry: profile.industry,
+          size: profile.size,
+          email: profile.email,
+          phone: profile.phone,
+          street: profile.street,
+          barangay: profile.barangay,
+          city: profile.city,
+          province: profile.province,
+          benefits: profile.benefits,
         }),
       });
       const mergedProfile = mergeCompanyApiProfile(profile, result.company);
@@ -309,7 +338,7 @@ export function CompanyProfilePage() {
       setSaveError(
         cached
           ? ""
-          : "Company profile saved, but this browser could not keep the extra device-only details.",
+          : "Company profile saved, but this browser could not keep a local copy.",
       );
     } catch (error) {
       setSaved(false);

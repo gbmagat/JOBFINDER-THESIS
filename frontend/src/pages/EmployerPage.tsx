@@ -54,6 +54,18 @@ function formatJobStatus(status: string) {
   return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 }
 
+function effectiveJobStatus(status: string, closingAt?: string) {
+  if (
+    status === "active" &&
+    closingAt &&
+    Number.isFinite(Date.parse(closingAt)) &&
+    Date.parse(closingAt) <= Date.now()
+  ) {
+    return "Expired";
+  }
+  return formatJobStatus(status);
+}
+
 function formatClosingDate(closingAt?: string) {
   if (!closingAt) return "Not set";
   const value = new Date(closingAt);
@@ -211,14 +223,18 @@ export function EmployerPage() {
     if (!overview) return [];
 
     return overview.jobs.map((job) => {
-      const status = formatJobStatus(job.status);
+      const status = effectiveJobStatus(job.status, job.closingAt);
       return {
         id: job.id,
         title: job.title,
         location: formatJobLocation(job),
         status,
         closingLabel:
-          status === "Active" ? formatClosingDate(job.closingAt) : "Not published",
+          status === "Active"
+            ? formatClosingDate(job.closingAt)
+            : status === "Expired"
+              ? `Closed ${formatClosingDate(job.closingAt)}`
+              : "Not published",
         applicants: job.applicantCount,
         newApplicants: job.newApplicantCount,
         strongMatches: job.strongMatchCount,
@@ -359,7 +375,7 @@ export function EmployerPage() {
                       </strong>
                     </td>
                     <td data-label="Actions">
-                      {post.status === "Active" ? (
+                      {post.status !== "Draft" ? (
                         <Link
                           className="button button--secondary"
                           to={`/employer/posts/${encodeURIComponent(post.id)}/candidates`}
