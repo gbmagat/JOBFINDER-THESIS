@@ -1,0 +1,207 @@
+import { expect, test, type Page } from "@playwright/test";
+
+const jobId = "it-support-assistant-lumina-tech";
+const jobTitle = "IT Support Assistant";
+const seeker = {
+  email: "qa-seeker@example.test",
+  password: "qa-test-password-2026",
+};
+const employer = {
+  email: "qa-employer@example.test",
+  password: "qa-test-password-2026",
+};
+
+async function signIn(
+  page: Page,
+  account: typeof seeker,
+  role: "job-seeker" | "employer",
+) {
+  const returnTo = role === "employer" ? "/employer" : "/profile";
+  const query = new URLSearchParams({
+    returnTo,
+    ...(role === "employer" ? { role: "employer" } : {}),
+  });
+  await page.goto(`/sign-in?${query.toString()}`);
+  await page.getByLabel("Email Address").fill(account.email);
+  await page.getByLabel("Password", { exact: true }).fill(account.password);
+  await page.getByRole("button", { name: "Sign In", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`${returnTo.replace("/", "\\/")}$`));
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= window.innerWidth &&
+          document.body.scrollWidth <= window.innerWidth,
+      ),
+    )
+    .toBe(true);
+}
+
+test.describe.serial("JobFinder critical user journeys", () => {
+  test("a guest can browse jobs but sees no personal match score", async ({
+    page,
+  }) => {
+    await page.goto("/jobs");
+
+    await expect(
+      page.getByRole("heading", { name: "Search Local Jobs" }),
+    ).toBeVisible();
+    await expect(page.getByText(/\d+% match/i)).toHaveCount(0);
+
+    await page.getByRole("link", { name: jobTitle }).first().click();
+    await expect(page.getByRole("heading", { name: jobTitle })).toBeVisible();
+    await expect(page.getByText(/\d+% overall match/i)).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Sign In to Apply" }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: "Keep Your Application Connected",
+      }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Continue Browsing" }).click();
+
+    await page.goto("/profile");
+    await expect(page).toHaveURL(/\/sign-in\?.*returnTo=%2Fprofile/);
+  });
+
+  test("a job seeker signs in through the apply gate and submits a PDF", async ({
+    page,
+  }) => {
+    await page.goto(`/jobs/${jobId}`);
+    await page.getByRole("button", { name: "Sign In to Apply" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Email address").fill(seeker.email);
+    await dialog.getByLabel("Password").fill(seeker.password);
+    await dialog
+      .getByRole("button", { name: "Sign In and Continue" })
+      .click();
+
+    await expect(page).toHaveURL(new RegExp(`/jobs/${jobId}/apply$`));
+    await page.getByLabel("Full name").fill("JobFinder Demo User");
+    await page.getByLabel("Email address").fill(seeker.email);
+    await page.getByLabel("Mobile number").fill("0917 123 4567");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "qa-resume.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF"),
+    });
+    await page
+      .getByLabel("Message to employer")
+      .fill("I am interested in this role and can support local users.");
+    await page.getByRole("button", { name: "Review Application" }).click();
+    await page
+      .getByLabel(/I confirm that these details are accurate/i)
+      .check();
+    await page.getByRole("button", { name: "Submit Application" }).click();
+
+    await expect(
+      page.getByRole("heading", {
+        name: /Your Application Was Sent to Lumina Tech Solutions/i,
+      }),
+    ).toBeVisible();
+
+    await page.goto("/applications");
+    await expect(page.getByRole("heading", { name: "Applications" })).toBeVisible();
+    await expect(page.getByText(jobTitle).first()).toBeVisible();
+    await expect(page.getByText("Submitted").first()).toBeVisible();
+  });
+
+  test("an employer publishes a job and shortlists the submitted applicant", async ({
+    page,
+  }) => {
+    await signIn(page, employer, "employer");
+    await page.goto("/employer/posts/new");
+
+    const futureDeadline = new Date();
+    futureDeadline.setUTCDate(futureDeadline.getUTCDate() + 30);
+    const deadline = futureDeadline.toISOString().slice(0, 10);
+
+    await page.getByLabel("Job title").fill("QA Support Coordinator");
+    await page
+      .getByLabel("Job description")
+      .fill("Coordinate technical support requests and document clear solutions.");
+    await page.getByText("Additional Job Details").click();
+    await page.getByLabel("Application deadline").fill(deadline);
+    await page.getByLabel("Work schedule").fill("Monday to Friday, day shift");
+    await page.getByLabel("Minimum pay (PHP)").fill("22000");
+    await page.getByLabel("Maximum pay (PHP)").fill("28000");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+
+    await page.getByLabel("Add a required skill").fill("Technical support");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByLabel("Barangay").fill("Sto. Rosario");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page
+      .getByLabel(/I confirm this is an active vacancy owned by our company/i)
+      .check();
+    await page.getByRole("button", { name: "Publish Job" }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "Your Job Post Is Ready" }),
+    ).toBeVisible();
+    await expect(page.getByText("QA Support Coordinator").first()).toBeVisible();
+
+    await page.goto(`/employer/posts/${jobId}/candidates`);
+    const candidate = page
+      .locator("article.candidate-card")
+      .filter({ hasText: "JobFinder Demo User" });
+    await expect(candidate).toBeVisible();
+    await candidate
+      .getByText("View Why This Applicant Matches", { exact: true })
+      .click();
+    await candidate.getByLabel("Review status").selectOption("Shortlisted");
+    await expect(page.getByText(/Status saved as Shortlisted/i)).toBeVisible();
+    await expect(candidate.getByText("Shortlisted").first()).toBeVisible();
+
+    await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes("/api/auth/logout") &&
+          response.request().method() === "POST",
+      ),
+      page.getByRole("button", { name: "Sign out" }).click(),
+    ]);
+    await signIn(page, seeker, "job-seeker");
+    await page.goto("/applications");
+    await expect(page.getByText("Shortlisted").first()).toBeVisible();
+  });
+
+  test("the authenticated mobile layout has one navigation and can sign out", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await signIn(page, seeker, "job-seeker");
+
+    await expect(page.locator(".mobile-header")).toBeVisible();
+    await expect(page.locator('[aria-label="Primary navigation"]:visible')).toHaveCount(1);
+    await expectNoHorizontalOverflow(page);
+    const footer = page.locator("footer").last();
+    await footer.scrollIntoViewIfNeeded();
+    await expect(footer).toBeVisible();
+
+    await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes("/api/auth/logout") &&
+          response.request().method() === "POST",
+      ),
+      page.getByRole("button", { name: "Sign out" }).click(),
+    ]);
+    await expect(page).toHaveURL(/\/sign-in(?:\?.*)?$/);
+    await expect(
+      page.getByRole("heading", { name: "Welcome Back" }),
+    ).toBeVisible();
+
+    await page.reload();
+    await expect(page).toHaveURL(/\/sign-in(?:\?.*)?$/);
+    await expect(
+      page.getByRole("heading", { name: "Welcome Back" }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+});

@@ -429,6 +429,12 @@ ol {
   height: 1.15rem;
 }
 
+.rail-sign-out {
+  flex: 0 0 auto;
+  margin-top: var(--space-1);
+  cursor: pointer;
+}
+
 .mobile-header {
   height: var(--header-mobile-height);
   align-items: center;
@@ -460,6 +466,24 @@ ol {
   color: var(--blue-800);
   font-size: var(--text-sm);
   font-weight: 600;
+}
+
+.mobile-account-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mobile-sign-out {
+  width: 2.5rem;
+  padding-inline: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.mobile-sign-out svg {
+  width: 1.125rem;
+  height: 1.125rem;
 }
 
 .mobile-bottom-nav {

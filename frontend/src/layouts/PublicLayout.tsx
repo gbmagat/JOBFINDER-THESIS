@@ -302,11 +302,13 @@ function DesktopTopNavigation({
 function TabletRail({
   isGuest,
   items,
+  onSignOut,
   pathname,
   user,
 }: {
   isGuest: boolean;
   items: NavigationItem[];
+  onSignOut(): void;
   pathname: string;
   user: AuthUser | null;
 }) {
@@ -366,6 +368,17 @@ function TabletRail({
       >
         <UserRound aria-hidden="true" />
       </Link>
+      {!isGuest ? (
+        <button
+          aria-label="Sign out"
+          className="rail-user rail-sign-out"
+          onClick={onSignOut}
+          title="Sign out"
+          type="button"
+        >
+          <LogOut aria-hidden="true" />
+        </button>
+      ) : null}
     </aside>
   );
 }
@@ -373,11 +386,13 @@ function TabletRail({
 function MobileChrome({
   isGuest,
   items,
+  onSignOut,
   pathname,
   user,
 }: {
   isGuest: boolean;
   items: NavigationItem[];
+  onSignOut(): void;
   pathname: string;
   user: AuthUser | null;
 }) {
@@ -392,12 +407,25 @@ function MobileChrome({
     <>
       <header className="mobile-header">
         <Brand context={context} />
-        <Link
-          className="mobile-auth-link"
-          to={isGuest ? "/sign-in" : user?.role === "employer" ? "/employer" : "/profile"}
-        >
-          {isGuest ? "Sign In" : "Account"}
-        </Link>
+        <div className="mobile-account-actions">
+          <Link
+            className="mobile-auth-link"
+            to={isGuest ? "/sign-in" : user?.role === "employer" ? "/employer" : "/profile"}
+          >
+            {isGuest ? "Sign In" : "Account"}
+          </Link>
+          {!isGuest ? (
+            <button
+              aria-label="Sign out"
+              className="mobile-auth-link mobile-sign-out"
+              onClick={onSignOut}
+              title="Sign out"
+              type="button"
+            >
+              <LogOut aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
       </header>
 
       <nav className="mobile-bottom-nav" aria-label="Primary navigation">
@@ -483,12 +511,14 @@ export function PublicLayout() {
       <TabletRail
         isGuest={isGuest}
         items={items}
+        onSignOut={signOut}
         pathname={pathname}
         user={user}
       />
       <MobileChrome
         isGuest={isGuest}
         items={items}
+        onSignOut={signOut}
         pathname={pathname}
         user={user}
       />
