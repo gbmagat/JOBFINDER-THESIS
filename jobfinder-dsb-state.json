@@ -235,77 +235,60 @@
       ]
     },
     "figmaReadyArtifacts": {
-      "jobSeekerDesktop": {
-        "source": "figma-ready/jobseeker-desktop-pov.svg",
-        "preview": "figma-ready/jobseeker-desktop-pov-preview.png",
-        "publicJobDetailPreview": "figma-ready/public-browse-desktop-job-detail.png",
-        "signInToApplyPreview": "figma-ready/public-browse-desktop-sign-in-to-apply.png",
-        "canvas": "9040x900",
-        "screens": [
-          "Desktop / Job Seeker — Recommendations",
-          "Desktop / Job Seeker — Search & Filters",
-          "Desktop / Job Seeker — Job Detail",
-          "Desktop / Job Seeker — Applications",
-          "Desktop / Job Seeker — Map & List",
-          "Desktop / Job Seeker — Sign In to Apply"
-        ],
-        "figmaPage": "77:7",
-        "figmaFrames": [
-          "77:9",
-          "79:76",
-          "79:136",
-          "81:2",
-          "90:188",
-          "114:181"
-        ],
-        "figmaAudit": "figma-ready/jobseeker-desktop-figma-audit.png",
-        "status": "imported as native editable Figma layers and validated"
+      "version": "1.1",
+      "sourceReleaseLabel": "Version 1.1, Frontend",
+      "sourceFileKey": "cwDpgv3V0L3rGx8e8QXAf1",
+      "exportedOn": "2026-08-01",
+      "readme": "figma-ready/README.md",
+      "screenExports": 34,
+      "screensByViewport": {
+        "desktop1440": 8,
+        "reference1024": 8,
+        "mobile390": 18
       },
-      "publicBrowseMobile": {
-        "welcomePreview": "figma-ready/public-browse-mobile-welcome.png",
-        "jobDetailPreview": "figma-ready/public-browse-mobile-job-detail.png",
-        "signInToApplyFrame": "10:53",
-        "status": "public browsing and contextual sign-in-to-apply flow are editable and visually validated"
+      "directories": {
+        "desktopJobSeeker": "figma-ready/desktop/job-seeker",
+        "desktopEmployer": "figma-ready/desktop/employer",
+        "reference1024JobSeeker": "figma-ready/tablet/job-seeker",
+        "reference1024Employer": "figma-ready/tablet/employer",
+        "mobileJobSeeker": "figma-ready/mobile/job-seeker",
+        "mobileEmployer": "figma-ready/mobile/employer"
       },
-      "gettingStartedPreview": "figma-ready/public-browse-getting-started.png",
-      "formerPesoAdmin": {
-        "figmaPage": "4:3",
-        "figmaPageName": "99 Archive — Former PESO Admin (Out of Scope)",
-        "hiddenFrames": [
-          "7:55",
-          "13:108"
-        ],
-        "previewArchive": "figma-ready/archive-former-peso-admin",
-        "status": "archived and excluded from active product scope"
-      }
+      "representativePreviews": {
+        "publicHome": "figma-ready/desktop/job-seeker/01-public-home.png",
+        "publicSearch": "figma-ready/desktop/job-seeker/02-job-search.png",
+        "publicJobDetail": "figma-ready/desktop/job-seeker/03-job-detail.png",
+        "signInToApply": "figma-ready/mobile/job-seeker/05-sign-in-to-apply.png",
+        "offlineSearch": "figma-ready/mobile/job-seeker/14-search-offline.png",
+        "employerCandidates": "figma-ready/desktop/employer/03-candidate-matches.png"
+      },
+      "excludedFromCurrentExport": [
+        "Legacy Version 1.0 and pre-Version 1.1 frames",
+        "Duplicate audit and contact-sheet exports",
+        "Former PESO/admin archive because it is not a current website role",
+        "Figma foundations, components, utilities, and composite boards",
+        "Mobile location-permission screen 86:5 because the website does not implement that full-screen design"
+      ]
     }
   },
   "audit": {
     "passed": true,
-    "screens": 26,
+    "release": "Version 1.1, Frontend",
+    "screenExports": 34,
     "screensByViewport": {
-      "mobile": 14,
-      "tablet": 1,
-      "desktop": 11
+      "mobile390": 18,
+      "reference1024": 8,
+      "desktop1440": 8
     },
-    "componentFamilies": 8,
-    "componentVariants": 89,
-    "localVariables": 38,
-    "darkBluePaletteShades": 11,
-    "whiteScreenBackgrounds": "26/26",
-    "mobileWhiteBackgrounds": "14/14",
-    "prototypeLinks": 43,
-    "prototypeFlows": 4,
-    "mobileTouchTargets": "reviewed across all 14 mobile screens",
-    "typography": "897 visible active-screen text nodes derived from the verified 832-node baseline plus 65 visible auth-flow additions; all added text uses Manrope",
-    "contrast": "5/5 semantic pairs passed",
-    "placeholderText": 0,
-    "missingFonts": 0,
-    "zeroSizeText": 0,
-    "genericComponentNames": 0,
-    "verificationBasis": "Visual QA completed for mobile welcome, mobile job detail, mobile sign-in-to-apply, desktop public job detail, desktop sign-in-to-apply, and Getting Started. Final aggregate counts are derived from the last verified audit plus exact created and mutated nodes because the Figma connector ran out of workspace credits during the final read-only recount."
+    "removedLegacyDesignFiles": 65,
+    "fileValidation": "34/34 PNG files opened successfully and match their source frame dimensions",
+    "routeValidation": "Every exported frame maps to an implemented route or current UI state; composite boards and the unimplemented mobile location-permission screen were excluded",
+    "responsiveMapping": "The T01-T08 frames are 1024 px references and therefore use the website desktop navigation breakpoint",
+    "typography": "Current screen content uses Montserrat; Source Sans 3 appears only in audited icon-glyph text layers",
+    "verificationBasis": "Live Figma Version 1.1 inventory, current React router and page-state audit, PNG dimension validation, and representative visual inspection across job-seeker and employer desktop, 1024 px, and mobile exports"
   },
   "pendingValidations": [
-    "Repeat the aggregate Figma connector recount when workspace credits are replenished; no visual or interaction defect is currently known."
+    "Create dedicated Version 1.1 frames for the true 640-1023 px tablet-rail layout.",
+    "Add current Figma coverage for implemented routes and states listed as gaps in figma-ready/README.md."
   ]
 }
