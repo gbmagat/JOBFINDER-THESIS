@@ -149,6 +149,56 @@ test("public jobs never expose a guest match score", async () => {
   assert.equal("ownerId" in directJob.source, false);
 });
 
+test("an incomplete seeker profile never receives personalized match data", async () => {
+  const seeker = await register("job-seeker", "incomplete-match@example.com");
+  const headers = { cookie: seeker.cookie };
+
+  await request("/api/profile/skills", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ skills: ["Troubleshooting"] }),
+  });
+
+  const incompleteProfile = await request("/api/profile", { headers });
+  assert.equal(incompleteProfile.body.profile.isComplete, false);
+
+  const incompleteJobs = await request("/api/jobs", { headers });
+  assert.equal("fit" in incompleteJobs.body.jobs[0], false);
+
+  const incompleteDetail = await request(
+    "/api/jobs/it-support-assistant-lumina-tech",
+    { headers },
+  );
+  assert.equal("fit" in incompleteDetail.body.job, false);
+
+  const incompleteRoute = await request(
+    "/api/jobs/it-support-assistant-lumina-tech/route",
+    { headers },
+  );
+  assert.equal(incompleteRoute.body.personalized, false);
+
+  await request("/api/profile", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      fullName: "Incomplete Seeker",
+      mobileNumber: "09171234567",
+      barangay: "Balibago",
+      city: "Angeles City",
+      maximumDistanceKm: 10,
+      maximumMinutes: 35,
+      homeNodeId: "balibago",
+      preferredWorkTypes: [],
+    }),
+  });
+
+  const completeProfile = await request("/api/profile", { headers });
+  assert.equal(completeProfile.body.profile.isComplete, true);
+
+  const completeJobs = await request("/api/jobs", { headers });
+  assert.equal(typeof completeJobs.body.jobs[0].fit.overallScore, "number");
+});
+
 test("protected account routes require a signed-in job seeker", async () => {
   const guest = await request("/api/profile");
   assert.equal(guest.response.status, 401);

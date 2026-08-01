@@ -143,6 +143,23 @@ test("route status boundaries and the overall 70/30 arithmetic stay explicit", (
   );
 });
 
+test("matching stays unavailable until profile details and skills are complete", () => {
+  const seeker = db
+    .prepare("SELECT id FROM users WHERE role = 'job-seeker'")
+    .get();
+  const job = rowToJob(
+    db.prepare("SELECT * FROM jobs WHERE id = ?").get(
+      "it-support-assistant-lumina-tech",
+    ),
+  );
+
+  db.prepare(
+    "UPDATE profiles SET mobile_number = '', barangay = '' WHERE user_id = ?",
+  ).run(seeker.id);
+
+  assert.equal(getUserMatch(db, seeker.id, job), null);
+});
+
 test("job availability requires active status and a future closing date", () => {
   assert.equal(
     isJobAvailable({ status: "active", closingAt: "2099-01-01T00:00:00Z" }),

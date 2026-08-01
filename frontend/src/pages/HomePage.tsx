@@ -30,6 +30,7 @@ import { usePersistentState } from "../lib/usePersistentState";
 import { apiRequest } from "../lib/api";
 
 type HomeApiProfile = {
+  isComplete: boolean;
   fullName: string;
   mobileNumber: string;
   barangay: string;
@@ -41,6 +42,18 @@ type HomeApiProfile = {
 };
 
 const DEFAULT_HOME_WORK_TYPES = ["Full-time", "Hybrid"];
+
+function hasRequiredProfileDetails(profile: typeof DEFAULT_PROFILE_DETAILS) {
+  const mobileNumber = profile.mobileNumber.replace(/[\s()-]/g, "");
+  return (
+    profile.fullName.trim().length >= 2 &&
+    /^(?:\+639|09)\d{9}$/.test(mobileNumber) &&
+    Boolean(profile.barangay.trim()) &&
+    Boolean(profile.city.trim()) &&
+    Number(profile.maximumDistance) > 0 &&
+    Number(profile.maximumMinutes) > 0
+  );
+}
 
 export function HomePage() {
   const { user } = useAuth();
@@ -64,7 +77,7 @@ function JobSeekerHome({
   userId: string;
 }) {
   const navigate = useNavigate();
-  const { jobs: allJobs } = useJobs();
+  const { hasPersonalizedMatches, jobs: allJobs } = useJobs();
   const [query, setQuery] = useState("");
   const [profileDetails, setProfileDetails] = usePersistentState(
     userStorageKey(PROFILE_DETAILS_KEY, userId),
@@ -94,6 +107,9 @@ function JobSeekerHome({
   const [serverApplicationCount, setServerApplicationCount] = useState<
     number | null
   >(null);
+  const [serverProfileComplete, setServerProfileComplete] = useState<
+    boolean | null
+  >(null);
 
   useEffect(() => {
     if (import.meta.env.MODE === "test") return;
@@ -119,9 +135,13 @@ function JobSeekerHome({
         setCommuteMinutes(String(profile.maximumMinutes));
         setProfileSkills(profile.skills.map((skill) => skill.name));
         setPreferredWorkTypes(profile.preferredWorkTypes);
+        setServerProfileComplete(profile.isComplete);
       })
       .catch(() => {
-        if (active) setPreferredWorkTypes(DEFAULT_HOME_WORK_TYPES);
+        if (active) {
+          setPreferredWorkTypes(DEFAULT_HOME_WORK_TYPES);
+          setServerProfileComplete(false);
+        }
       });
 
     return () => {
@@ -134,12 +154,23 @@ function JobSeekerHome({
     setSavedJobIds,
     userId,
   ]);
-  const hasProfileSkills = profileSkills.length > 0;
-  const strongMatchCount = allJobs.filter(
-    (job) =>
-      job.fit.overallScore >= 85 &&
-      job.route.estimatedMinutes <= Number(commuteMinutes),
-  ).length;
+  const hasProfileDetails = hasRequiredProfileDetails(profileDetails);
+  const canShowPersonalizedMatch =
+    hasPersonalizedMatches &&
+    (import.meta.env.MODE === "test"
+      ? hasProfileDetails && profileSkills.length > 0
+      : serverProfileComplete === true);
+  const strongMatchCount = canShowPersonalizedMatch
+    ? allJobs.filter(
+        (job) =>
+          job.fit.overallScore >= 85 &&
+          job.route.estimatedMinutes <= Number(commuteMinutes),
+      ).length
+    : 0;
+  const profileSetupHref =
+    hasProfileDetails && profileSkills.length === 0
+      ? "/onboarding/skills"
+      : "/onboarding/profile";
   const activeApplicationCount =
     serverApplicationCount ?? submittedApplications.length;
   const firstName = displayName.trim().split(/\s+/, 1)[0] || "there";
@@ -156,10 +187,16 @@ function JobSeekerHome({
         <div>
           <span className="eyebrow">
             <Compass size={16} aria-hidden="true" />
-            {profileDetails.barangay}, {profileDetails.city}
+            {canShowPersonalizedMatch
+              ? `${profileDetails.barangay}, ${profileDetails.city}`
+              : "Complete Your Profile to Unlock Matches"}
           </span>
           <h1>Good Morning, {firstName}</h1>
-          <p>Find work that fits your skills and commute.</p>
+          <p>
+            {canShowPersonalizedMatch
+              ? "Find work that fits your skills and commute."
+              : "Browse local jobs now, then complete your profile for personalized matches."}
+          </p>
         </div>
 
         <form
@@ -187,11 +224,11 @@ function JobSeekerHome({
       <section className="dashboard-stats" aria-label="Job seeker summary">
         <article className="dashboard-stat">
           <span>Strong Matches</span>
-          <strong>{hasProfileSkills ? strongMatchCount : "—"}</strong>
+          <strong>{canShowPersonalizedMatch ? strongMatchCount : "—"}</strong>
           <small>
-            {hasProfileSkills
+            {canShowPersonalizedMatch
               ? "Within your commute limit"
-              : "Add skills to compare jobs"}
+              : "Complete your profile to see matches"}
           </small>
         </article>
         <article className="dashboard-stat">
@@ -215,10 +252,13 @@ function JobSeekerHome({
           <div className="section-heading">
             <div>
               <p className="kicker">Skill-aware and commute-aware</p>
-              <h2 id="matches-heading">Best Matches</h2>
+              <h2 id="matches-heading">
+                {canShowPersonalizedMatch ? "Best Matches" : "Explore Local Jobs"}
+              </h2>
             </div>
             <Link className="text-link" to="/jobs">
-              See All Matches <ArrowRight size={16} aria-hidden="true" />
+              {canShowPersonalizedMatch ? "See All Matches" : "Browse All Jobs"}{" "}
+              <ArrowRight size={16} aria-hidden="true" />
             </Link>
           </div>
           <div className="job-list">
@@ -226,7 +266,7 @@ function JobSeekerHome({
               <JobCard
                 job={job}
                 key={job.id}
-                showMatch={hasProfileSkills}
+                showMatch={canShowPersonalizedMatch}
                 showSummary={index === 0}
               />
             ))}
@@ -237,35 +277,53 @@ function JobSeekerHome({
           className="preferences-card"
           aria-labelledby="preferences-heading"
         >
-          <p className="kicker">Personalized ranking</p>
-          <h2 id="preferences-heading">Your Matching Preferences</h2>
-          <dl>
-            <div>
-              <dt>Commute limit</dt>
-              <dd>{commuteMinutes} minutes</dd>
-            </div>
-            <div>
-              <dt>Preferred work types</dt>
-              <dd>
-                {preferredWorkTypes === null
-                  ? "Loading preferences..."
-                  : preferredWorkTypes.length > 0
-                    ? preferredWorkTypes.map((workType) => (
-                        <span className="chip" key={workType}>
-                          {workType}
-                        </span>
-                      ))
-                    : "No preference selected"}
-              </dd>
-            </div>
-            <div>
-              <dt>Top skills</dt>
-              <dd>{profileSkills.join(" · ") || "Add skills to personalize"}</dd>
-            </div>
-          </dl>
-          <Link className="button button--secondary" to="/preferences">
-            Edit Preferences
-          </Link>
+          {canShowPersonalizedMatch ? (
+            <>
+              <p className="kicker">Personalized ranking</p>
+              <h2 id="preferences-heading">Your Matching Preferences</h2>
+              <dl>
+                <div>
+                  <dt>Commute limit</dt>
+                  <dd>{commuteMinutes} minutes</dd>
+                </div>
+                <div>
+                  <dt>Preferred work types</dt>
+                  <dd>
+                    {preferredWorkTypes === null
+                      ? "Loading preferences..."
+                      : preferredWorkTypes.length > 0
+                        ? preferredWorkTypes.map((workType) => (
+                            <span className="chip" key={workType}>
+                              {workType}
+                            </span>
+                          ))
+                        : "No preference selected"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Top skills</dt>
+                  <dd>{profileSkills.join(" · ")}</dd>
+                </div>
+              </dl>
+              <Link className="button button--secondary" to="/preferences">
+                Edit Preferences
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="kicker">Profile setup</p>
+              <h2 id="preferences-heading">Unlock Personalized Matches</h2>
+              <p className="preferences-card__message">
+                Add your contact details, home area, commute limit, and skills
+                before JobFinder calculates match percentages.
+              </p>
+              <Link className="button button--primary" to={profileSetupHref}>
+                {profileSkills.length > 0
+                  ? "Complete Your Profile"
+                  : "Set Up Your Profile"}
+              </Link>
+            </>
+          )}
         </aside>
       </div>
     </div>

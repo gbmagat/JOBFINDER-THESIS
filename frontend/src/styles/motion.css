@@ -74,30 +74,6 @@
   transition: transform var(--motion-base) var(--motion-ease-out);
 }
 
-.job-card {
-  overflow: hidden;
-}
-
-.job-card::before {
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 4px;
-  transform: scaleX(0);
-  transform-origin: left;
-  background: linear-gradient(
-    90deg,
-    var(--palette-green),
-    var(--palette-olive),
-    var(--palette-beige)
-  );
-  content: "";
-  pointer-events: none;
-  transition: transform var(--motion-slow) var(--motion-ease-out);
-}
-
 .public-home-search,
 .public-start-card > svg,
 .job-card__title-link,
@@ -186,10 +162,6 @@
   border-color: var(--palette-green);
   box-shadow: var(--shadow-focus);
   transform: translateY(-3px);
-}
-
-.job-card:focus-within::before {
-  transform: scaleX(1);
 }
 
 .map-pin--job {
@@ -282,12 +254,6 @@
     background: #fcfbf7;
     box-shadow: var(--shadow-hover);
     transform: translateY(-6px) scale(1.01);
-  }
-
-  .job-card:hover::before,
-  .job-result-selectable.is-selected .job-card::before,
-  .job-card:focus-within::before {
-    transform: scaleX(1);
   }
 
   .job-card:hover .job-card__title-link,
@@ -412,8 +378,7 @@
   }
 
   .button--primary::after,
-  .top-nav-link::after,
-  .job-card::before {
+  .top-nav-link::after {
     display: none;
   }
 }

@@ -13,7 +13,7 @@ import {
   stringArray,
   validEmail,
 } from "../http.js";
-import { getUserMatch } from "../matching.js";
+import { getUserMatch, isMatchingProfileComplete } from "../matching.js";
 
 function profileResponse(db, userId) {
   const profile = db.prepare("SELECT * FROM profiles WHERE user_id = ?").get(userId);
@@ -25,6 +25,7 @@ function profileResponse(db, userId) {
     ORDER BY skills.name
   `).all(userId);
   return {
+    isComplete: isMatchingProfileComplete(db, profile, skills),
     fullName: profile.full_name,
     mobileNumber: profile.mobile_number,
     barangay: profile.barangay,

@@ -725,9 +725,12 @@ export function JobsPage() {
             </aside>
           ) : user.role === "job-seeker" && !canShowPersonalizedMatch ? (
             <aside className="notice jobs-match-prompt" role="status">
-              <p>Add skills to compare jobs when you are ready.</p>
-              <Link className="text-link" to="/onboarding/skills">
-                Add Skills
+              <p>
+                Complete your profile before JobFinder calculates match
+                percentages.
+              </p>
+              <Link className="text-link" to="/onboarding/profile">
+                Complete Profile
               </Link>
             </aside>
           ) : null}

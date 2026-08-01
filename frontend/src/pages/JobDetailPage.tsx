@@ -449,10 +449,10 @@ export function JobDetailPage() {
               </>
             ) : isJobSeeker ? (
               <>
-                <p>Add your own skills before JobFinder compares this job.</p>
+                <p>Complete your profile before JobFinder compares this job.</p>
                 <p>You can still read the requirements and apply now.</p>
-                <Link className="text-link" to="/onboarding/skills">
-                  Add Skills
+                <Link className="text-link" to="/onboarding/profile">
+                  Complete Profile
                 </Link>
               </>
             ) : isEmployer ? (

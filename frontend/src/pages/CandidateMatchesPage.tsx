@@ -50,6 +50,7 @@ type Candidate = {
   missingSkills: string[];
   summary: string;
   initialStatus: ReviewStatus;
+  hasMatch?: boolean;
   application?: {
     email: string;
     message: string;
@@ -277,9 +278,10 @@ function submittedApplicationToCandidate(
       dateStyle: "medium",
       timeStyle: "short",
     }).format(new Date(application.appliedAt)),
-    overallScore: job?.fit.overallScore ?? 75,
-    skillScore: job?.fit.skillScore ?? 75,
-    locationScore: job?.fit.locationScore ?? 75,
+    hasMatch: Boolean(job?.fit),
+    overallScore: job?.fit.overallScore ?? 0,
+    skillScore: job?.fit.skillScore ?? 0,
+    locationScore: job?.fit.locationScore ?? 0,
     distance: route ? `${route.distanceKm} km` : "Not available",
     travelTime: route ? `${route.estimatedMinutes} min` : "Not available",
     withinPreference: route?.accessibilityStatus !== "over-limit",
@@ -328,6 +330,7 @@ function apiApplicationToCandidate(
     name: application.applicant.fullName,
     role: jobTitle,
     appliedAt: application.submittedAt,
+    hasMatch: Boolean(fit),
     overallScore: fit?.overallScore ?? 0,
     skillScore: fit?.skillScore ?? 0,
     locationScore: fit?.locationScore ?? 0,
@@ -559,7 +562,11 @@ export function CandidateMatchesPage() {
 
         return matchesStatus && matchesQuery;
       })
-      .sort((first, second) => second.overallScore - first.overallScore);
+      .sort((first, second) => {
+        const firstScore = first.hasMatch === false ? -1 : first.overallScore;
+        const secondScore = second.hasMatch === false ? -1 : second.overallScore;
+        return secondScore - firstScore;
+      });
   }, [currentCandidates, isTestMode, query, selectedJob, statusFilter, statuses]);
 
   const currentJob =
@@ -813,13 +820,26 @@ export function CandidateMatchesPage() {
                         {formatAppliedDate(candidate.appliedAt)}
                       </p>
                     </div>
-                    <div className="candidate-overall-score">
-                      <strong>{candidate.overallScore}%</strong>
-                      <span>overall match</span>
-                    </div>
+                    {candidate.hasMatch === false ? (
+                      <div className="candidate-overall-score candidate-overall-score--unavailable">
+                        <strong>No Score</strong>
+                        <span>profile incomplete</span>
+                      </div>
+                    ) : (
+                      <div className="candidate-overall-score">
+                        <strong>{candidate.overallScore}%</strong>
+                        <span>overall match</span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="candidate-score-strip">
+                  {candidate.hasMatch === false ? (
+                    <p className="candidate-match-unavailable">
+                      Match percentages will appear after the applicant completes
+                      their profile.
+                    </p>
+                  ) : (
+                    <div className="candidate-score-strip">
                     <div>
                       <span>Skills match</span>
                       <strong>{candidate.skillScore}%</strong>
@@ -854,7 +874,8 @@ export function CandidateMatchesPage() {
                         />
                       </div>
                     </div>
-                  </div>
+                    </div>
+                  )}
 
                   <p className="candidate-card__reason">
                     {isTestMode && candidate.withinPreference

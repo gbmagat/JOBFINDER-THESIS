@@ -83,5 +83,13 @@ describe("HomePage job seeker state", () => {
     expect(savedJobs).toHaveTextContent("0");
     expect(applications).toHaveTextContent("0");
     expect(applications).toHaveTextContent("No active applications yet");
+    expect(summary).toHaveTextContent("Complete your profile to see matches");
+    expect(
+      screen.getByRole("heading", { name: "Explore Local Jobs" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Set Up Your Profile" }),
+    ).toHaveAttribute("href", "/onboarding/profile");
+    expect(screen.queryByText(/\d+% match/i)).not.toBeInTheDocument();
   });
 });

@@ -4581,8 +4581,30 @@ ol {
 }
 
 .dashboard-search {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   width: min(100%, 24rem);
   flex: 0 1 24rem;
+}
+
+.dashboard-search > svg {
+  color: var(--palette-green);
+}
+
+.dashboard-search > input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--target-min);
+  padding: 0.65rem 0.5rem;
+  border: 0;
+  background: transparent;
+  outline: 0;
+}
+
+.dashboard-search > input:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 3px solid var(--blue-100);
+  outline-offset: -2px;
 }
 
 .dashboard-stats {
@@ -4631,6 +4653,14 @@ ol {
   margin-bottom: var(--space-2);
 }
 
+.dashboard-matches .section-heading > .text-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
 .preferences-card {
   display: grid;
   gap: var(--space-2);
@@ -4644,6 +4674,12 @@ ol {
   color: var(--navy-900);
   font-size: var(--text-lg);
   line-height: 1.3;
+}
+
+.preferences-card__message {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
 }
 
 .preferences-card dl {
@@ -4702,7 +4738,14 @@ ol {
 
 @media (max-width: 420px) {
   .dashboard-search .button {
+    grid-column: 1 / -1;
     width: 100%;
+  }
+}
+
+@media (min-width: 640px) {
+  .dashboard-matches .section-heading {
+    align-items: flex-end;
   }
 }
 
@@ -6203,6 +6246,20 @@ ol {
   font-weight: 750;
 }
 
+.candidate-overall-score--unavailable {
+  border-color: var(--color-border);
+  background: var(--slate-50);
+}
+
+.candidate-overall-score--unavailable strong,
+.candidate-overall-score--unavailable span {
+  color: var(--color-text-muted);
+}
+
+.candidate-overall-score--unavailable strong {
+  font-size: var(--text-base);
+}
+
 .candidate-score-strip {
   display: grid;
   gap: var(--space-1);
@@ -6231,6 +6288,15 @@ ol {
 
 .candidate-score-strip .progress-track {
   grid-column: 1 / -1;
+}
+
+.candidate-match-unavailable {
+  margin: 0;
+  padding: var(--space-2);
+  border-block: 1px solid var(--color-border);
+  background: var(--slate-50);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 
 .candidate-card__reason {

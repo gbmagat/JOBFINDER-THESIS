@@ -96,6 +96,27 @@ export function calculateSkillMatch(db, requiredSkills, userSkills) {
   };
 }
 
+export function isMatchingProfileComplete(db, profile, userSkills) {
+  if (!profile || userSkills.length === 0) return false;
+
+  const mobileNumber = String(profile.mobile_number ?? "").replace(/[\s()-]/g, "");
+  const hasRequiredDetails =
+    String(profile.full_name ?? "").trim().length >= 2 &&
+    /^(?:\+639|09)\d{9}$/.test(mobileNumber) &&
+    Boolean(String(profile.barangay ?? "").trim()) &&
+    Boolean(String(profile.city ?? "").trim());
+  const hasValidLimits =
+    Number.isFinite(profile.maximum_distance_km) &&
+    profile.maximum_distance_km > 0 &&
+    Number.isFinite(profile.maximum_minutes) &&
+    profile.maximum_minutes > 0;
+  const hasValidHomeNode = Boolean(
+    db.prepare("SELECT 1 FROM geo_nodes WHERE id = ?").get(profile.home_node_id),
+  );
+
+  return hasRequiredDetails && hasValidLimits && hasValidHomeNode;
+}
+
 export function getUserMatch(db, userId, job) {
   const profile = db.prepare("SELECT * FROM profiles WHERE user_id = ?").get(userId);
   const userSkills = db.prepare(`
@@ -105,7 +126,9 @@ export function getUserMatch(db, userId, job) {
     WHERE user_skills.user_id = ?
   `).all(userId);
 
-  if (!profile || userSkills.length === 0 || !job.geoNodeId) return null;
+  if (!isMatchingProfileComplete(db, profile, userSkills) || !job.geoNodeId) {
+    return null;
+  }
 
   const route = calculateRoute(db, profile.home_node_id, job.geoNodeId, {
     maximumDistanceKm: profile.maximum_distance_km,

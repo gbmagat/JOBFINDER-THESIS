@@ -1,6 +1,6 @@
-# JobFinder — Version 3.3 QA Update
+# JobFinder — Version 3.4 Profile Completion & Match Logic
 
-This version verifies the connected responsive React frontend and Node.js, Express, and SQLite backend with real browser journeys. It covers public browsing, protected authentication, PDF application submission, employer job publishing and applicant shortlisting, and mobile session persistence and sign-out.
+This version requires job seekers to complete their personal details, home and commute information, and at least one skill before personalized match percentages appear. It also improves incomplete-profile guidance, candidate score handling, dashboard alignment, and job-card hover behavior across responsive layouts.
 
 ## Run locally
 
