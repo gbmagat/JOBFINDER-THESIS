@@ -1,11 +1,10 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   BriefcaseBusiness,
-  CheckCircle2,
+  Eye,
+  EyeOff,
   LockKeyhole,
-  LogIn,
-  ShieldCheck,
   WifiOff,
 } from "lucide-react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
@@ -17,7 +16,7 @@ import {
   sanitizeEmployerReturnTo,
   sanitizeReturnTo,
 } from "../features/auth/auth-intent";
-import { getJobById } from "../features/jobs/data";
+import { useJobs } from "../features/jobs/JobsContext";
 import { LUMINA_DEMO_EMPLOYER_EMAIL } from "../features/employer/demo-workspace";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 
@@ -25,6 +24,7 @@ export function SignInPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { isAuthenticated, signIn } = useAuth();
+  const { getJob } = useJobs();
   const requestedRole: AuthRole =
     searchParams.get("role") === "employer" ? "employer" : "job-seeker";
   const rawReturnTo = searchParams.get("returnTo");
@@ -34,9 +34,10 @@ export function SignInPage() {
       ? sanitizeEmployerReturnTo(rawReturnTo)
       : sanitizeReturnTo(rawReturnTo);
   const pendingIntent = useMemo(() => readApplyIntent(), []);
-  const selectedJob = pendingIntent ? getJobById(pendingIntent.jobId) : null;
+  const selectedJob = pendingIntent ? getJob(pendingIntent.jobId) : null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{
     email?: string;
@@ -45,6 +46,12 @@ export function SignInPage() {
   const [submitting, setSubmitting] = useState(false);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const isOnline = useOnlineStatus();
+
+  useEffect(() => {
+    document.title = `${
+      selectedJob ? "Sign In to Apply" : "Sign In"
+    } | JobFinder`;
+  }, [selectedJob]);
 
   if (isAuthenticated) {
     return <Navigate replace to={returnTo} />;
@@ -105,33 +112,43 @@ export function SignInPage() {
       <section className="auth-page__panel">
         <Link className="back-link" to={selectedJob ? `/jobs/${selectedJob.id}` : "/"}>
           <ArrowLeft size={18} aria-hidden="true" />
-          {selectedJob ? "Back to job" : "Back to JobFinder"}
+          {selectedJob ? "Back to Job" : "Back to JobFinder"}
         </Link>
 
-        <div className="auth-card">
-          <span className="eyebrow">
-            <LockKeyhole size={16} aria-hidden="true" />
-            {selectedJob
-              ? "Public browsing stays open"
-              : requestedRole === "employer"
-                ? "Employer access"
-                : "Secure account access"}
-          </span>
-          <h1>{selectedJob ? "Sign in to apply" : "Welcome back"}</h1>
-          <p>
-            {selectedJob
-              ? "You can browse every public job without an account. Sign in only to continue this application."
-              : requestedRole === "employer"
-                ? "Sign in to manage direct job posts and candidates."
-                : "Sign in to open your saved jobs, applications, and profile."}
-          </p>
+        <div className="auth-shell auth-shell--sign-in">
+          <header className="auth-header">
+            <h1>{selectedJob ? "Sign In to Apply" : "Welcome Back"}</h1>
+            <p>
+              {selectedJob
+                ? "Enter your account details. We will return you to this job after sign in."
+                : requestedRole === "employer"
+                  ? "Sign in to manage direct job posts and candidates."
+                  : "Sign in to open your saved jobs, applications, and profile."}
+            </p>
+          </header>
+          <nav className="auth-mode-switch" aria-label="Account access">
+            <span
+              aria-current="page"
+              className="auth-mode-switch__option is-active"
+            >
+              Sign In
+            </span>
+            <span className="auth-mode-switch__divider" aria-hidden="true" />
+            <Link
+              className="auth-mode-switch__option"
+              to={`/register?${registerSearch.toString()}`}
+              viewTransition
+            >
+              Register
+            </Link>
+          </nav>
 
+          <div className="auth-card">
           {selectedJob ? (
             <div className="selected-job-card">
-              <span>Applying for</span>
-              <strong>{selectedJob.title}</strong>
+              <strong>Applying for {selectedJob.title}</strong>
               <small>
-                {selectedJob.employerName} · Return to this application
+                {selectedJob.employerName} · Your application return is saved
               </small>
             </div>
           ) : null}
@@ -156,7 +173,7 @@ export function SignInPage() {
             </div>
           ) : null}
 
-          {requestedRole === "employer" ? (
+          {import.meta.env.DEV && requestedRole === "employer" ? (
             <div className="notice" role="note">
               <BriefcaseBusiness size={18} aria-hidden="true" />
               <p>
@@ -171,7 +188,7 @@ export function SignInPage() {
                   }}
                   type="button"
                 >
-                  Fill demo sign-in
+                  Fill Demo Sign-In
                 </button>
               </p>
             </div>
@@ -185,7 +202,7 @@ export function SignInPage() {
                 role="alert"
                 tabIndex={-1}
               >
-                <h2>Check your sign-in details</h2>
+                <h2>Check Your Sign-In Details</h2>
                 <ul>
                   {fieldErrors.email ? (
                     <li>
@@ -202,7 +219,7 @@ export function SignInPage() {
               </div>
             ) : null}
             <label className="field">
-              <span>Email address</span>
+              <span>Email Address</span>
               <input
                 aria-describedby={
                   fieldErrors.email ? "sign-in-email-error" : undefined
@@ -230,91 +247,81 @@ export function SignInPage() {
                 </span>
               ) : null}
             </label>
-            <label className="field">
-              <span>Password</span>
-              <input
-                aria-describedby={
-                  fieldErrors.password ? "sign-in-password-error" : undefined
-                }
-                aria-invalid={Boolean(fieldErrors.password)}
-                autoComplete="current-password"
-                className="input"
-                id="sign-in-password"
-                onChange={(event) => {
-                  setPassword(event.target.value);
-                  setFieldErrors((current) => {
-                    const next = { ...current };
-                    delete next.password;
-                    return next;
-                  });
-                }}
-                placeholder="Enter any password for this demo"
-                required
-                type="password"
-                value={password}
-              />
+            <div className="field">
+              <label htmlFor="sign-in-password">Password</label>
+              <div className="password-control">
+                <input
+                  aria-describedby={
+                    fieldErrors.password
+                      ? "sign-in-password-error"
+                      : undefined
+                  }
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  autoComplete="current-password"
+                  className="input"
+                  id="sign-in-password"
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setFieldErrors((current) => {
+                      const next = { ...current };
+                      delete next.password;
+                      return next;
+                    });
+                  }}
+                  placeholder="Enter your password"
+                  required
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                />
+                <button
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  className="password-visibility"
+                  onClick={() => setShowPassword((current) => !current)}
+                  type="button"
+                >
+                  {showPassword ? (
+                    <EyeOff size={20} aria-hidden="true" />
+                  ) : (
+                    <Eye size={20} aria-hidden="true" />
+                  )}
+                </button>
+              </div>
               {fieldErrors.password ? (
                 <span className="field-error" id="sign-in-password-error">
                   {fieldErrors.password}
                 </span>
               ) : null}
-            </label>
+            </div>
             <button
               className="button button--primary button--block"
               disabled={submitting || !isOnline}
               type="submit"
             >
-              <LogIn size={18} aria-hidden="true" />
               {submitting
                 ? "Signing in…"
                 : selectedJob
-                  ? "Sign in and continue"
-                  : "Sign in"}
+                  ? "Sign In and Continue"
+                  : "Sign In"}
             </button>
           </form>
-
-          <div className="auth-card__divider">
-            <span>New to JobFinder?</span>
           </div>
-          <Link
-            className="button button--secondary button--block"
-            to={`/register?${registerSearch.toString()}`}
-          >
-            Create an account{selectedJob ? " and continue" : ""}
-          </Link>
+
+          <p className="auth-switch">
+            New to JobFinder?{" "}
+            <Link
+              to={`/register?${registerSearch.toString()}`}
+              viewTransition
+            >
+              Register{selectedJob ? " and Continue" : ""}
+            </Link>
+          </p>
 
           <p className="auth-card__fine-print">
-            <ShieldCheck size={16} aria-hidden="true" />
-            Frontend demo: use any valid email and password. The production API
-            will validate credentials and protect all mutations.
+            Use the email and password registered with your account.
           </p>
         </div>
       </section>
-
-      <aside className="auth-page__aside">
-        <div className="brand-mark brand-mark--inverse">
-          <span className="brand-mark__dot" />
-          <span>JobFinder</span>
-        </div>
-        <div>
-          <p className="eyebrow eyebrow--inverse">Explore first</p>
-          <h2>See the evidence before making an account.</h2>
-          <ul className="auth-benefits">
-            <li>
-              <CheckCircle2 size={20} aria-hidden="true" />
-              Public job details and source provenance
-            </li>
-            <li>
-              <CheckCircle2 size={20} aria-hidden="true" />
-              Skill and location match explanations
-            </li>
-            <li>
-              <CheckCircle2 size={20} aria-hidden="true" />
-              Routes with readable text alternatives
-            </li>
-          </ul>
-        </div>
-      </aside>
     </main>
   );
 }

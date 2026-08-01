@@ -1,6 +1,7 @@
 import { lazy } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import { ProtectedRoute } from "../features/auth/ProtectedRoute";
+import { FooterOnlyLayout } from "../layouts/FooterOnlyLayout";
 import { PublicLayout } from "../layouts/PublicLayout";
 
 const AccountPage = lazy(() =>
@@ -134,7 +135,11 @@ export const router = createBrowserRouter([
       { path: "*", element: <NotFoundPage /> },
     ],
   },
-  { path: "/sign-in", element: <SignInPage /> },
-  { path: "/register", element: <RegisterPage /> },
-  { path: "*", element: <NotFoundPage /> },
+  {
+    element: <FooterOnlyLayout />,
+    children: [
+      { path: "/sign-in", element: <SignInPage /> },
+      { path: "/register", element: <RegisterPage /> },
+    ],
+  },
 ]);

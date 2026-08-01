@@ -1,17 +1,4 @@
-import {
-  ArrowRight,
-  BriefcaseBusiness,
-  Building2,
-  CalendarClock,
-  CheckCircle2,
-  CircleAlert,
-  Database,
-  Eye,
-  MapPin,
-  Plus,
-  UsersRound,
-} from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   readEmployerApplications,
@@ -21,6 +8,61 @@ import { useAuth } from "../features/auth/AuthContext";
 import { isLuminaDemoEmployer } from "../features/employer/demo-workspace";
 import { getJobById } from "../features/jobs/data";
 import { readPublishedEmployerPosts } from "../features/jobs/employer-posts";
+import { apiRequest } from "../lib/api";
+
+type EmployerOverviewJob = {
+  applicantCount: number;
+  closingAt?: string;
+  id: string;
+  location: {
+    barangay?: string;
+    city?: string;
+    venue?: string;
+  };
+  newApplicantCount: number;
+  status: string;
+  strongMatchCount: number;
+  title: string;
+};
+
+type EmployerOverviewResponse = {
+  jobs: EmployerOverviewJob[];
+  metrics: {
+    activePosts: number;
+    applicants: number;
+    newToReview: number;
+    strongMatches: number;
+  };
+  recentActivity: {
+    applicantName: string;
+    id: string;
+    jobId: string;
+    jobTitle: string;
+    overallScore: number | null;
+    status: string;
+    submittedAt: string;
+  }[];
+};
+
+function formatJobLocation(job: EmployerOverviewJob) {
+  return [job.location.barangay || job.location.venue, job.location.city]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function formatJobStatus(status: string) {
+  return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+}
+
+function formatClosingDate(closingAt?: string) {
+  if (!closingAt) return "Not set";
+  const value = new Date(closingAt);
+  if (!Number.isFinite(value.getTime())) return "Not set";
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+  }).format(value);
+}
 
 const seededEmployerPosts = [
   {
@@ -28,7 +70,7 @@ const seededEmployerPosts = [
     title: "IT Support Assistant",
     location: "Sto. Rosario, Angeles City",
     status: "Active",
-    posted: "July 24, 2026",
+    closingLabel: "24 Jul",
     applicants: 18,
     newApplicants: 5,
     strongMatches: 7,
@@ -38,7 +80,7 @@ const seededEmployerPosts = [
     title: "Customer Service Associate",
     location: "Balibago, Angeles City",
     status: "Active",
-    posted: "July 21, 2026",
+    closingLabel: "21 Jul",
     applicants: 26,
     newApplicants: 3,
     strongMatches: 11,
@@ -48,7 +90,7 @@ const seededEmployerPosts = [
     title: "Junior Web Developer",
     location: "Clark Freeport Zone",
     status: "Draft",
-    posted: "Not published",
+    closingLabel: "Not published",
     applicants: 0,
     newApplicants: 0,
     strongMatches: 0,
@@ -58,29 +100,54 @@ const seededEmployerPosts = [
 const seededActivity = [
   {
     title: "Maria Santos applied",
-    detail: "IT Support Assistant · 94% overall match",
+    detail: "IT Support Assistant · 94% match",
     time: "18 minutes ago",
   },
   {
     title: "Carlo Dizon was shortlisted",
-    detail: "Customer Service Associate · 91% overall match",
+    detail: "Customer Service Associate",
     time: "2 hours ago",
   },
   {
     title: "IT Support Assistant reached 18 applications",
-    detail: "7 candidates currently have an 85% or higher match",
+    detail: "Review candidates with clear evidence.",
     time: "Yesterday",
   },
 ] as const;
 
 export function EmployerPage() {
   const { user } = useAuth();
+  const usesTestData = import.meta.env.MODE === "test";
   const isDemoEmployer = isLuminaDemoEmployer(user?.id);
+  const [overview, setOverview] = useState<EmployerOverviewResponse | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (usesTestData || !user?.id) return;
+
+    let isActive = true;
+    setOverview(null);
+    apiRequest<EmployerOverviewResponse>("/employer/overview")
+      .then((result) => {
+        if (isActive) setOverview(result);
+      })
+      .catch(() => {
+        if (isActive) setOverview(null);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [user?.id, usesTestData]);
+
   const submittedApplications = useMemo(
     () => readEmployerApplications(user?.id),
     [user?.id],
   );
-  const employerPosts = useMemo(() => {
+  const localEmployerPosts = useMemo(() => {
+    if (!usesTestData) return [];
+
     const candidateStatuses = readEmployerCandidateStatuses(user?.id);
     const submittedCounts = submittedApplications.reduce<
       Record<
@@ -111,11 +178,10 @@ export function EmployerPage() {
       title: post.title,
       location: post.location,
       status: "Active" as const,
-      posted: new Intl.DateTimeFormat("en-PH", {
-        month: "long",
+      closingLabel: new Intl.DateTimeFormat("en-PH", {
+        month: "short",
         day: "numeric",
-        year: "numeric",
-      }).format(new Date(post.publishedAt)),
+      }).format(new Date(`${post.deadline}T12:00:00+08:00`)),
       applicants: submittedCounts[post.id]?.applicants ?? 0,
       newApplicants: submittedCounts[post.id]?.newApplicants ?? 0,
       strongMatches: submittedCounts[post.id]?.strongMatches ?? 0,
@@ -139,31 +205,62 @@ export function EmployerPage() {
       : [];
 
     return [...persistedPosts, ...samplePosts];
-  }, [isDemoEmployer, submittedApplications, user?.id]);
-  const activePosts = employerPosts.filter((post) => post.status === "Active");
-  const totalApplicants = employerPosts.reduce(
-    (total, post) => total + post.applicants,
-    0,
-  );
-  const newApplicants = employerPosts.reduce(
-    (total, post) => total + post.newApplicants,
-    0,
-  );
-  const strongMatches = employerPosts.reduce(
-    (total, post) => total + post.strongMatches,
-    0,
-  );
-  const visibleActivity = isDemoEmployer
-    ? seededActivity
-    : submittedApplications.slice(0, 3).map((application) => ({
+  }, [isDemoEmployer, submittedApplications, user?.id, usesTestData]);
+  const employerPosts = useMemo(() => {
+    if (usesTestData) return localEmployerPosts;
+    if (!overview) return [];
+
+    return overview.jobs.map((job) => {
+      const status = formatJobStatus(job.status);
+      return {
+        id: job.id,
+        title: job.title,
+        location: formatJobLocation(job),
+        status,
+        closingLabel:
+          status === "Active" ? formatClosingDate(job.closingAt) : "Not published",
+        applicants: job.applicantCount,
+        newApplicants: job.newApplicantCount,
+        strongMatches: job.strongMatchCount,
+      };
+    });
+  }, [localEmployerPosts, overview, usesTestData]);
+  const activePostCount = overview
+    ? overview.metrics.activePosts
+    : employerPosts.filter((post) => post.status === "Active").length;
+  const totalApplicants = overview
+    ? overview.metrics.applicants
+    : employerPosts.reduce((total, post) => total + post.applicants, 0);
+  const newApplicants = overview
+    ? overview.metrics.newToReview
+    : employerPosts.reduce((total, post) => total + post.newApplicants, 0);
+  const strongMatches = overview
+    ? overview.metrics.strongMatches
+    : employerPosts.reduce((total, post) => total + post.strongMatches, 0);
+  const visibleActivity = usesTestData
+    ? isDemoEmployer
+      ? seededActivity
+      : submittedApplications.slice(0, 3).map((application) => ({
         title: `${application.applicant.fullName} applied`,
         detail: application.jobTitle,
         time: new Intl.DateTimeFormat("en-PH", {
           dateStyle: "medium",
           timeStyle: "short",
         }).format(new Date(application.appliedAt)),
+      }))
+    : (overview?.recentActivity ?? []).map((application) => ({
+        title: `${application.applicantName} applied`,
+        detail: `${application.jobTitle}${
+          application.overallScore === null
+            ? ""
+            : ` · ${application.overallScore}% match`
+        }`,
+        time: new Intl.DateTimeFormat("en-PH", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(application.submittedAt)),
       }));
-  const workspaceName = isDemoEmployer
+  const workspaceName = usesTestData && isDemoEmployer
     ? "Lumina Tech"
     : user?.displayName || "your team";
 
@@ -171,52 +268,32 @@ export function EmployerPage() {
     <div className="page employer-page">
       <header className="page-header page-header--split">
         <div className="page-header__copy">
-          <span className="eyebrow">Employer workspace</span>
-          <h1>Good morning, {workspaceName}</h1>
+          <span className="eyebrow">Employer Workspace</span>
+          <h1>Good Morning, {workspaceName}</h1>
           <p>
-            Manage your direct job posts and review applicants ranked by skill
-            fit and practical travel distance.
+            Manage your job posts and review applicants using clear skill and
+            travel evidence.
           </p>
         </div>
         <Link className="button button--primary" to="/employer/posts/new">
-          <Plus size={18} aria-hidden="true" />
-          Create job post
+          Create Job Post
         </Link>
       </header>
 
-      <nav className="employer-quick-nav" aria-label="Employer workspace">
-        <Link className="employer-quick-nav__link is-active" to="/employer">
-          Overview
-        </Link>
-        <Link className="employer-quick-nav__link" to="/employer/posts">
-          Job posts
-        </Link>
-        <Link className="employer-quick-nav__link" to="/employer/candidates">
-          Candidates
-        </Link>
-        <Link className="employer-quick-nav__link" to="/employer/company">
-          Company profile
-        </Link>
-      </nav>
-
       <section className="metric-grid employer-metrics" aria-label="Hiring summary">
         <article className="metric-card">
-          <BriefcaseBusiness aria-hidden="true" />
-          <strong>{activePosts.length}</strong>
-          <span>Active direct posts</span>
+          <strong>{activePostCount}</strong>
+          <span>Active posts</span>
         </article>
         <article className="metric-card">
-          <UsersRound aria-hidden="true" />
           <strong>{totalApplicants}</strong>
-          <span>Total applicants</span>
+          <span>Applicants</span>
         </article>
         <article className="metric-card">
-          <CircleAlert aria-hidden="true" />
           <strong>{newApplicants}</strong>
           <span>New to review</span>
         </article>
         <article className="metric-card">
-          <CheckCircle2 aria-hidden="true" />
           <strong>{strongMatches}</strong>
           <span>Strong matches</span>
         </article>
@@ -226,11 +303,11 @@ export function EmployerPage() {
         <section className="surface employer-posts" aria-labelledby="posts-heading">
           <div className="surface__header">
             <div>
-              <p className="kicker">Direct listings</p>
-              <h2 id="posts-heading">Your job posts</h2>
+              <p className="kicker">Your job posts</p>
+          <h2 id="posts-heading">Current Posts</h2>
             </div>
             <Link className="text-link" to="/employer/posts/new">
-              New post
+              New Post
             </Link>
           </div>
 
@@ -243,13 +320,10 @@ export function EmployerPage() {
             <table className="applications-table employer-posts-table">
               <thead>
                 <tr>
-                  <th scope="col">Job post</th>
+                  <th scope="col">Job</th>
                   <th scope="col">Status</th>
                   <th scope="col">Applicants</th>
-                  <th scope="col">Strong matches</th>
-                  <th scope="col">
-                    <span className="sr-only">Actions</span>
-                  </th>
+                  <th scope="col">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -259,12 +333,10 @@ export function EmployerPage() {
                     <td data-label="Job post">
                       <strong>{post.title}</strong>
                       <span>
-                        <MapPin size={13} aria-hidden="true" />
-                        {post.location}
-                      </span>
-                      <span>
-                        <CalendarClock size={13} aria-hidden="true" />
-                        {post.posted}
+                        {post.location.split(",")[0]}
+                        {post.status === "Active"
+                          ? ` · closes ${post.closingLabel}`
+                          : ` · ${post.closingLabel}`}
                       </span>
                     </td>
                     <td data-label="Status">
@@ -279,14 +351,12 @@ export function EmployerPage() {
                       </span>
                     </td>
                     <td data-label="Applicants">
-                      <strong>{post.applicants}</strong>
-                      {post.newApplicants > 0 ? (
-                        <span>{post.newApplicants} new</span>
-                      ) : null}
-                    </td>
-                    <td data-label="Strong matches">
-                      <strong>{post.strongMatches}</strong>
-                      <span>85% or higher</span>
+                      <strong>
+                        {post.applicants}
+                        {post.newApplicants > 0
+                          ? ` · ${post.newApplicants} new`
+                          : ""}
+                      </strong>
                     </td>
                     <td data-label="Actions">
                       {post.status === "Active" ? (
@@ -294,15 +364,14 @@ export function EmployerPage() {
                           className="button button--secondary"
                           to={`/employer/posts/${encodeURIComponent(post.id)}/candidates`}
                         >
-                          <UsersRound aria-hidden="true" />
-                          View matches
+                          View Applicants
                         </Link>
                       ) : (
                         <Link
                           className="button button--neutral"
                           to="/employer/posts/new"
                         >
-                          Continue draft
+                          Continue Draft
                         </Link>
                       )}
                     </td>
@@ -310,8 +379,8 @@ export function EmployerPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5}>
-                      <strong>No job posts yet</strong>
+                    <td colSpan={4}>
+            <strong>No Job Posts Yet</strong>
                       <span>
                         Create your first direct listing to start receiving
                         applications.
@@ -328,7 +397,7 @@ export function EmployerPage() {
           <div className="surface__header">
             <div>
               <p className="kicker">Latest updates</p>
-              <h2 id="activity-heading">Hiring activity</h2>
+        <h2 id="activity-heading">Hiring Activity</h2>
             </div>
           </div>
           <ol className="employer-activity__list">
@@ -342,7 +411,6 @@ export function EmployerPage() {
                   <div>
                     <strong>{item.title}</strong>
                     <p>{item.detail}</p>
-                    <time>{item.time}</time>
                   </div>
                 </li>
               ))
@@ -353,58 +421,15 @@ export function EmployerPage() {
                   aria-hidden="true"
                 />
                 <div>
-                  <strong>No hiring activity yet</strong>
+              <strong>No Hiring Activity Yet</strong>
                   <p>New applications will appear here.</p>
                 </div>
               </li>
             )}
           </ol>
-          <div className="surface__footer">
-            <Link className="text-link" to="/employer/candidates">
-              Review all candidates
-              <ArrowRight size={16} aria-hidden="true" />
-            </Link>
-          </div>
         </aside>
       </div>
 
-      <section className="employer-setup-grid" aria-label="Employer setup">
-        <article className="content-card">
-          <span className="icon-tile icon-tile--soft">
-            <Building2 aria-hidden="true" />
-          </span>
-          <div>
-            <p className="kicker">Company presence</p>
-            <h2>Complete your company profile</h2>
-            <p>
-              Add a clear description, contact details, and workplace benefits
-              so applicants know who they are applying to.
-            </p>
-          </div>
-          <Link className="button button--secondary" to="/employer/company">
-            Edit company profile
-          </Link>
-        </article>
-
-        <article className="content-card employer-source-note">
-          <span className="icon-tile icon-tile--soft">
-            <Database aria-hidden="true" />
-          </span>
-          <div>
-            <p className="kicker">Data boundary</p>
-            <h2>PESO/LGU records stay read-only</h2>
-            <p>
-              This workspace manages only vacancies posted directly by your
-              company. PESO and LGU organizations provide external datasets;
-              they are not employer accounts or approval administrators.
-            </p>
-          </div>
-          <Link className="text-link" to="/about/data-sources">
-            <Eye size={16} aria-hidden="true" />
-            Review data-source policy
-          </Link>
-        </article>
-      </section>
     </div>
   );
 }

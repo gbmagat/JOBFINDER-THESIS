@@ -12,12 +12,7 @@ export const PROFILE_SKILLS_KEY = "jobfinder.profile-skills.v1";
 export const COMMUTE_MINUTES_KEY = "jobfinder.commute-minutes.v1";
 export const WORK_TYPES_KEY = "jobfinder.preferred-work-types.v1";
 
-export const DEFAULT_PROFILE_SKILLS = [
-  "Java",
-  "Troubleshooting",
-  "Windows",
-  "Communication",
-];
+export const DEFAULT_PROFILE_SKILLS: string[] = [];
 
 export const DEFAULT_PROFILE_DETAILS: JobSeekerProfileDraft = {
   fullName: "",

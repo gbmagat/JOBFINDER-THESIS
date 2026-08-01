@@ -67,6 +67,17 @@ describe("ProtectedRoute", () => {
     );
   });
 
+  it("sends a guest application route to sign in with the selected job", async () => {
+    renderGuard(
+      "/jobs/it-support-assistant-lumina-tech/apply",
+      ["job-seeker"],
+    );
+
+    expect(await screen.findByTestId("location")).toHaveTextContent(
+      "/sign-in?returnTo=%2Fjobs%2Fit-support-assistant-lumina-tech%2Fapply",
+    );
+  });
+
   it("preserves the explicit employer role and return path", async () => {
     renderGuard("/employer", ["employer"]);
 

@@ -1,22 +1,18 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
-  BriefcaseBusiness,
-  Building2,
   Check,
   Compass,
-  Database,
-  MapPin,
   Search,
-  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { useAuth } from "../features/auth/AuthContext";
 import {
   SUBMITTED_APPLICATIONS_STORAGE_KEY,
   type StoredSubmittedApplication,
 } from "../features/applications/storage-contract";
-import { getAllJobs } from "../features/jobs/data";
+import { useAuth } from "../features/auth/AuthContext";
+import { useJobs } from "../features/jobs/JobsContext";
 import { JobCard } from "../features/jobs/JobCard";
 import {
   DEFAULT_SAVED_JOB_IDS,
@@ -29,29 +25,22 @@ import {
   PROFILE_DETAILS_KEY,
   PROFILE_SKILLS_KEY,
 } from "../features/profile/storage";
-import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
+import { usePersistentState } from "../lib/usePersistentState";
+import { apiRequest } from "../lib/api";
 
-const featureItems = [
-  {
-    icon: Sparkles,
-    title: "Skills that mean the same thing",
-    description:
-      "See jobs that match related skills—not only the exact words in a listing.",
-  },
-  {
-    icon: MapPin,
-    title: "A commute you can understand",
-    description:
-      "Compare distance, estimated travel time, and a readable route before applying.",
-  },
-  {
-    icon: Database,
-    title: "Transparent local sources",
-    description:
-      "Know whether a listing came from an employer or a PESO/LGU dataset.",
-  },
-];
+type HomeApiProfile = {
+  fullName: string;
+  mobileNumber: string;
+  barangay: string;
+  city: string;
+  maximumDistanceKm: number;
+  maximumMinutes: number;
+  preferredWorkTypes: string[];
+  skills: { name: string }[];
+};
+
+const DEFAULT_HOME_WORK_TYPES = ["Full-time", "Hybrid"];
 
 export function HomePage() {
   const { user } = useAuth();
@@ -75,21 +64,24 @@ function JobSeekerHome({
   userId: string;
 }) {
   const navigate = useNavigate();
-  const allJobs = useMemo(() => getAllJobs(), []);
+  const { jobs: allJobs } = useJobs();
   const [query, setQuery] = useState("");
-  const [profileDetails] = usePersistentState(
+  const [profileDetails, setProfileDetails] = usePersistentState(
     userStorageKey(PROFILE_DETAILS_KEY, userId),
     DEFAULT_PROFILE_DETAILS,
   );
-  const [commuteMinutes] = usePersistentState(
+  const [commuteMinutes, setCommuteMinutes] = usePersistentState(
     userStorageKey(COMMUTE_MINUTES_KEY, userId),
     "35",
   );
-  const [profileSkills] = usePersistentState<string[]>(
+  const [profileSkills, setProfileSkills] = usePersistentState<string[]>(
     userStorageKey(PROFILE_SKILLS_KEY, userId),
     DEFAULT_PROFILE_SKILLS,
   );
-  const [savedJobIds] = usePersistentState<string[]>(
+  const [preferredWorkTypes, setPreferredWorkTypes] = useState<string[] | null>(
+    import.meta.env.MODE === "test" ? DEFAULT_HOME_WORK_TYPES : null,
+  );
+  const [savedJobIds, setSavedJobIds] = usePersistentState<string[]>(
     userStorageKey(SAVED_JOB_IDS_KEY, userId),
     DEFAULT_SAVED_JOB_IDS,
   );
@@ -99,12 +91,57 @@ function JobSeekerHome({
     userStorageKey(SUBMITTED_APPLICATIONS_STORAGE_KEY, userId),
     [],
   );
+  const [serverApplicationCount, setServerApplicationCount] = useState<
+    number | null
+  >(null);
+
+  useEffect(() => {
+    if (import.meta.env.MODE === "test") return;
+
+    let active = true;
+    Promise.all([
+      apiRequest<{ jobs: { id: string }[] }>("/saved-jobs"),
+      apiRequest<{ applications: unknown[] }>("/applications"),
+      apiRequest<{ profile: HomeApiProfile }>("/profile"),
+    ])
+      .then(([saved, submitted, { profile }]) => {
+        if (!active) return;
+        setSavedJobIds(saved.jobs.map((job) => job.id));
+        setServerApplicationCount(submitted.applications.length);
+        setProfileDetails({
+          fullName: profile.fullName,
+          mobileNumber: profile.mobileNumber,
+          barangay: profile.barangay,
+          city: profile.city,
+          maximumDistance: String(profile.maximumDistanceKm),
+          maximumMinutes: String(profile.maximumMinutes),
+        });
+        setCommuteMinutes(String(profile.maximumMinutes));
+        setProfileSkills(profile.skills.map((skill) => skill.name));
+        setPreferredWorkTypes(profile.preferredWorkTypes);
+      })
+      .catch(() => {
+        if (active) setPreferredWorkTypes(DEFAULT_HOME_WORK_TYPES);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    setCommuteMinutes,
+    setProfileDetails,
+    setProfileSkills,
+    setSavedJobIds,
+    userId,
+  ]);
+  const hasProfileSkills = profileSkills.length > 0;
   const strongMatchCount = allJobs.filter(
     (job) =>
       job.fit.overallScore >= 85 &&
       job.route.estimatedMinutes <= Number(commuteMinutes),
   ).length;
-  const activeApplicationCount = 3 + submittedApplications.length;
+  const activeApplicationCount =
+    serverApplicationCount ?? submittedApplications.length;
   const firstName = displayName.trim().split(/\s+/, 1)[0] || "there";
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -121,7 +158,7 @@ function JobSeekerHome({
             <Compass size={16} aria-hidden="true" />
             {profileDetails.barangay}, {profileDetails.city}
           </span>
-          <h1>Good morning, {firstName}</h1>
+          <h1>Good Morning, {firstName}</h1>
           <p>Find work that fits your skills and commute.</p>
         </div>
 
@@ -149,20 +186,28 @@ function JobSeekerHome({
 
       <section className="dashboard-stats" aria-label="Job seeker summary">
         <article className="dashboard-stat">
-          <span>Strong matches</span>
-          <strong>{strongMatchCount}</strong>
-          <small>Within your commute limit</small>
+          <span>Strong Matches</span>
+          <strong>{hasProfileSkills ? strongMatchCount : "—"}</strong>
+          <small>
+            {hasProfileSkills
+              ? "Within your commute limit"
+              : "Add skills to compare jobs"}
+          </small>
         </article>
         <article className="dashboard-stat">
-          <span>Saved jobs</span>
+          <span>Saved Jobs</span>
           <strong>{savedJobIds.length}</strong>
           <small>Ready to revisit</small>
         </article>
-        <article className="dashboard-stat">
-          <span>Active applications</span>
+        <Link className="dashboard-stat" to="/applications">
+          <span>Active Applications</span>
           <strong>{activeApplicationCount}</strong>
-          <small>One shortlisted</small>
-        </article>
+          <small>
+            {activeApplicationCount
+              ? "Track your submitted applications"
+              : "No active applications yet"}
+          </small>
+        </Link>
       </section>
 
       <div className="dashboard-content">
@@ -170,10 +215,10 @@ function JobSeekerHome({
           <div className="section-heading">
             <div>
               <p className="kicker">Skill-aware and commute-aware</p>
-              <h2 id="matches-heading">Best matches</h2>
+              <h2 id="matches-heading">Best Matches</h2>
             </div>
             <Link className="text-link" to="/jobs">
-              See all matches <ArrowRight size={16} aria-hidden="true" />
+              See All Matches <ArrowRight size={16} aria-hidden="true" />
             </Link>
           </div>
           <div className="job-list">
@@ -181,6 +226,7 @@ function JobSeekerHome({
               <JobCard
                 job={job}
                 key={job.id}
+                showMatch={hasProfileSkills}
                 showSummary={index === 0}
               />
             ))}
@@ -192,7 +238,7 @@ function JobSeekerHome({
           aria-labelledby="preferences-heading"
         >
           <p className="kicker">Personalized ranking</p>
-          <h2 id="preferences-heading">Your matching preferences</h2>
+          <h2 id="preferences-heading">Your Matching Preferences</h2>
           <dl>
             <div>
               <dt>Commute limit</dt>
@@ -201,8 +247,15 @@ function JobSeekerHome({
             <div>
               <dt>Preferred work types</dt>
               <dd>
-                <span className="chip">Full-time</span>
-                <span className="chip">Hybrid</span>
+                {preferredWorkTypes === null
+                  ? "Loading preferences..."
+                  : preferredWorkTypes.length > 0
+                    ? preferredWorkTypes.map((workType) => (
+                        <span className="chip" key={workType}>
+                          {workType}
+                        </span>
+                      ))
+                    : "No preference selected"}
               </dd>
             </div>
             <div>
@@ -211,7 +264,7 @@ function JobSeekerHome({
             </div>
           </dl>
           <Link className="button button--secondary" to="/preferences">
-            Edit preferences
+            Edit Preferences
           </Link>
         </aside>
       </div>
@@ -230,157 +283,91 @@ function PublicHome() {
   }
 
   return (
-    <>
-      <section className="hero section" aria-labelledby="home-heading">
-        <div className="hero__copy">
-          <span className="eyebrow">
-            <Compass size={16} aria-hidden="true" />
-            Local opportunities in Angeles City
-          </span>
-          <h1 id="home-heading">Browse jobs freely.</h1>
-          <p className="hero__lede">
-            Search nearby work, view match reasons and routes—no login needed.
-            Sign in only when you are ready to apply.
-          </p>
-
-          <form className="search-bar" role="search" onSubmit={handleSearch}>
-            <Search size={20} aria-hidden="true" />
-            <label className="sr-only" htmlFor="home-job-search">
-              Search jobs, skills, or employers
-            </label>
-            <input
-              id="home-job-search"
-              type="search"
-              placeholder="Search jobs, skills, or employers"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <button className="button button--primary" type="submit">
-              Search jobs
-            </button>
-          </form>
-
-          <div className="trust-row" aria-label="What guests can do">
-            <span>
-              <Check size={16} aria-hidden="true" /> No account to browse
-            </span>
-            <span>
-              <Check size={16} aria-hidden="true" /> Match reasons included
-            </span>
-            <span>
-              <Check size={16} aria-hidden="true" /> Source shown clearly
-            </span>
-          </div>
-        </div>
-
-        <div className="hero__visual" aria-label="JobFinder match preview">
-          <div className="preview-card">
-            <div className="preview-card__top">
-              <span className="icon-tile">
-                <BriefcaseBusiness size={22} aria-hidden="true" />
-              </span>
-              <span className="match-badge">91% match</span>
-            </div>
-            <p className="kicker">Recommended near you</p>
-            <h2>IT Support Assistant</h2>
-            <p>Lumina Tech · Angeles City</p>
-            <div className="preview-metrics">
-              <div>
-                <strong>95%</strong>
-                <span>Skill fit</span>
-              </div>
-              <div>
-                <strong>18 min</strong>
-                <span>Est. commute</span>
-              </div>
-            </div>
-            <p className="preview-card__reason">
-              Your troubleshooting and networking skills are closely related
-              to this role.
+    <div className="public-home">
+      <section className="public-home-hero" aria-labelledby="home-heading">
+        <div className="public-home-hero__inner">
+          <div className="public-home-hero__copy">
+            <p className="public-home-eyebrow">
+              Angeles City Job Opportunities
             </p>
-            <Link
-              className="text-link"
-              to="/jobs/it-support-assistant-lumina-tech"
+            <h1 id="home-heading">Welcome to JobFinder</h1>
+            <p className="public-home-hero__lede">
+              Browse local jobs or open the Employer Workspace. No account is
+              needed until you apply.
+            </p>
+
+            <label
+              className="public-home-search-label"
+              htmlFor="home-job-search"
             >
-              View public job details <ArrowRight size={16} aria-hidden="true" />
-            </Link>
-          </div>
-        </div>
-      </section>
+              Quick Job Search
+            </label>
+            <form
+              className="public-home-search"
+              role="search"
+              onSubmit={handleSearch}
+            >
+              <Search size={20} aria-hidden="true" />
+              <input
+                id="home-job-search"
+                type="search"
+                placeholder="Enter a job title, skill, or employer"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <button className="button button--primary" type="submit">
+                Search Jobs
+              </button>
+            </form>
 
-      <section className="section" aria-labelledby="start-heading">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">Choose where to start</span>
-            <h2 id="start-heading">Start exploring JobFinder</h2>
-          </div>
-          <span className="quiet-badge">No login needed to browse</span>
-        </div>
-
-        <div className="choice-grid">
-          <article className="choice-card choice-card--featured">
-            <span className="icon-tile">
-              <Search size={22} aria-hidden="true" />
-            </span>
-            <div>
-              <p className="kicker">For job seekers</p>
-              <h3>Browse local jobs</h3>
-              <p>
-                Discover skill-aware, commute-aware opportunities. Review
-                match reasons, routes, and source details before you apply.
-              </p>
-              <div className="chip-row">
-                <span className="chip">Semantic skill fit</span>
-                <span className="chip">Commute-aware</span>
-              </div>
-            </div>
-            <Link className="button button--primary" to="/jobs">
-              Browse jobs—no sign in <ArrowRight size={18} aria-hidden="true" />
-            </Link>
-          </article>
-
-          <article className="choice-card">
-            <span className="icon-tile icon-tile--soft">
-              <Building2 size={22} aria-hidden="true" />
-            </span>
-            <div>
-              <p className="kicker">For employers</p>
-              <h3>Employer workspace</h3>
-              <p>
-                Sign in to post jobs, manage direct listings, and review
-                suitable candidates.
-              </p>
-            </div>
-            <Link className="button button--secondary" to="/employer">
-              Sign in as employer <ArrowRight size={18} aria-hidden="true" />
-            </Link>
-          </article>
-        </div>
-      </section>
-
-      <section className="section section--tinted" aria-labelledby="why-heading">
-        <div className="section-heading section-heading--centered">
-          <div>
-            <span className="eyebrow">Clear evidence, practical choices</span>
-            <h2 id="why-heading">Why a job is recommended</h2>
-            <p>
-              JobFinder explains its skill and location evidence so you can
-              decide for yourself.
+            <p className="public-home-browse-note">
+              <Check size={16} aria-hidden="true" />
+              No account needed to browse
             </p>
           </div>
         </div>
-        <div className="feature-grid">
-          {featureItems.map(({ icon: Icon, title, description }) => (
-            <article className="feature-card" key={title}>
-              <span className="icon-tile icon-tile--soft">
-                <Icon size={22} aria-hidden="true" />
-              </span>
-              <h3>{title}</h3>
-              <p>{description}</p>
-            </article>
-          ))}
+      </section>
+
+      <section className="public-data-strip" aria-label="Job data source">
+        <div className="public-data-strip__inner">
+          <p>
+            <ShieldCheck size={19} aria-hidden="true" />
+            Listings use PESO and LGU employment datasets.
+          </p>
+          <Link to="/about/data-sources">
+            About Our Data Sources <ArrowRight size={15} aria-hidden="true" />
+          </Link>
         </div>
       </section>
-    </>
+
+      <section className="public-start" aria-labelledby="start-heading">
+        <div className="public-start__inner">
+          <div className="public-start__heading">
+            <p className="kicker">Choose Where to Start</p>
+            <h2 id="start-heading">Start Exploring JobFinder</h2>
+          </div>
+
+          <div className="public-start__grid">
+            <Link className="public-start-card is-featured" to="/jobs">
+              <div>
+                <p className="kicker">For Job Seekers</p>
+                <h3>Browse Local Jobs</h3>
+                <p>View nearby openings before you sign in.</p>
+              </div>
+              <ArrowRight size={19} aria-hidden="true" />
+            </Link>
+
+            <Link className="public-start-card" to="/employer">
+              <div>
+                <p className="kicker">For Employers</p>
+                <h3>Employer Workspace</h3>
+                <p>Post jobs and review suitable applicants.</p>
+              </div>
+              <ArrowRight size={19} aria-hidden="true" />
+            </Link>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }

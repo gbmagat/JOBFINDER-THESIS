@@ -50,7 +50,7 @@ export function SourceProvenance({
     >
       <div className="source-provenance__header">
         <div>
-          <p className="source-provenance__eyebrow">Listing provenance</p>
+          <p className="source-provenance__eyebrow">Job source details</p>
           <h2 className="text-dark-blue" id="source-provenance-heading">
             {title}
           </h2>
@@ -125,7 +125,7 @@ export function SourceProvenance({
 
       {!compact && source.alternateApplicationMethods?.length ? (
         <div className="source-provenance__alternatives">
-          <h3>Other method in the source record</h3>
+      <h3>Other Method in the Source Record</h3>
           <ul>
             {source.alternateApplicationMethods.map((alternative) => (
               <li key={`${alternative.method}-${alternative.target}`}>

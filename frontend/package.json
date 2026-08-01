@@ -1,17 +1,17 @@
 {
   "name": "jobfinder-frontend",
   "private": true,
-  "version": "0.1.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "vite --mode test",
+    "build": "tsc -b && vite build --mode test",
     "check": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@fontsource-variable/manrope": "^5.3.0",
+    "@fontsource-variable/montserrat": "^5.3.0",
     "lucide-react": "^1.27.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

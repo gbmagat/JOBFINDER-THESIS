@@ -1,7 +1,5 @@
 import {
   ArrowLeft,
-  ArrowRight,
-  BriefcaseBusiness,
   Check,
   CheckCircle2,
   CircleDollarSign,
@@ -26,10 +24,9 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import { isLuminaDemoEmployer } from "../features/employer/demo-workspace";
 import {
-  readPublishedEmployerPosts,
   savePublishedEmployerPost,
-  type PublishedEmployerPost,
 } from "../features/jobs/employer-posts";
+import { apiRequest } from "../lib/api";
 import { userStorageKey } from "../lib/storage-keys";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import {
@@ -66,7 +63,7 @@ const EMPLOYER_DRAFT_STORAGE_KEY =
 const COMPANY_PROFILE_STORAGE_KEY =
   "jobfinder.employer.company-profile.v1";
 
-const initialDraft: JobDraft = {
+const testDraft: JobDraft = {
   title: "IT Support Specialist",
   employmentType: "Full-time",
   openings: "2",
@@ -75,7 +72,7 @@ const initialDraft: JobDraft = {
     .slice(0, 10),
   schedule: "Monday to Friday, 8:00 AM–5:00 PM",
   description:
-    "Provide first-line technical support, troubleshoot Windows workstations, and help employees resolve hardware, software, and network issues.",
+    "Provide first-line technical support and explain solutions in clear language to employees.",
   salaryMin: "22000",
   salaryMax: "28000",
   barangay: "Balibago",
@@ -84,7 +81,24 @@ const initialDraft: JobDraft = {
   workSetup: "On-site",
 };
 
-const initialSkills = [
+const newJobDraft: JobDraft = {
+  title: "",
+  employmentType: "Full-time",
+  openings: "1",
+  deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10),
+  schedule: "",
+  description: "",
+  salaryMin: "",
+  salaryMax: "",
+  barangay: "Balibago",
+  city: "Angeles City",
+  province: "Pampanga",
+  workSetup: "On-site",
+};
+
+const testSkills = [
   "Troubleshooting",
   "Windows",
   "Technical support",
@@ -166,6 +180,17 @@ function formatCurrency(value: string) {
     : "Not specified";
 }
 
+function geoNodeIdForBarangay(barangay: string): string {
+  const normalized = barangay.trim().toLowerCase();
+  if (normalized.includes("rosario") || normalized.includes("nepo")) {
+    return "nepo-center";
+  }
+  if (normalized.includes("maragul") || normalized.includes("marquee")) {
+    return "marquee";
+  }
+  return "balibago-business";
+}
+
 function readEmployerName(
   userId: string | undefined,
   displayName: string | undefined,
@@ -206,24 +231,27 @@ export function EmployerPostPage() {
     () => readStoredJobDraft(draftStorageKey),
     [draftStorageKey],
   );
+  const defaultDraft =
+    import.meta.env.MODE === "test" ? testDraft : newJobDraft;
+  const defaultSkills = import.meta.env.MODE === "test" ? testSkills : [];
   const [step, setStep] = useState(storedDraft?.step ?? 1);
   const [draft, setDraft] = useState<JobDraft>(
-    storedDraft?.draft ?? initialDraft,
+    storedDraft?.draft ?? defaultDraft,
   );
   const [skills, setSkills] = useState(
-    storedDraft?.skills.length ? storedDraft.skills : initialSkills,
+    storedDraft?.skills.length ? storedDraft.skills : defaultSkills,
   );
   const [skillInput, setSkillInput] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [published, setPublished] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState("");
   const [validationIssues, setValidationIssues] = useState<
     FormValidationIssue[]
   >([]);
   const validationSummaryRef = useRef<HTMLDivElement>(null);
 
-  const progressLabel = `Step ${step} of 3`;
   const location = useMemo(
     () =>
       [draft.barangay, draft.city, draft.province].filter(Boolean).join(", "),
@@ -284,7 +312,7 @@ export function EmployerPostPage() {
     setSavedMessage("");
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextIssues = collectFormValidationIssues(event.currentTarget);
     setValidationIssues(nextIssues);
@@ -310,31 +338,73 @@ export function EmployerPostPage() {
         return;
       }
 
-      const publishedAt = new Date().toISOString();
-      const slug =
-        draft.title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "") || "job";
-      const didPersist = savePublishedEmployerPost({
-        ...draft,
-        employerName,
-        id: `direct-${slug}-${Date.now()}`,
-        location,
-        ownerId: user?.id ?? "prototype-employer",
-        skills,
-        publishedAt,
-      }, draftStorageKey);
+      setPublishing(true);
+      try {
+        let jobId = `direct-${Date.now()}`;
+        let publishedAt = new Date().toISOString();
 
-      if (!didPersist) {
-        setPublishError(
-          "The preview is ready, but this browser could not save the mock post. Check storage permissions and try again.",
+        if (import.meta.env.MODE !== "test") {
+          const result = await apiRequest<{
+            job: {
+              id: string;
+              postedAt: string;
+              source: { publishedAt?: string };
+            };
+          }>("/employer/jobs", {
+            method: "POST",
+            body: JSON.stringify({
+              title: draft.title,
+              summary: draft.description.slice(0, 300),
+              description: draft.description,
+              employmentType: draft.employmentType,
+              workArrangement: draft.workSetup,
+              geoNodeId: geoNodeIdForBarangay(draft.barangay),
+              venue: `${employerName}, ${draft.barangay}`,
+              barangay: draft.barangay,
+              schedule: draft.schedule,
+              closingAt: draft.deadline,
+              requiredSkills: skills,
+              preferredSkills: [],
+              salaryMinimumPhp: Number(draft.salaryMin),
+              salaryMaximumPhp: Number(draft.salaryMax),
+              status: "active",
+              tags: [
+                draft.employmentType,
+                draft.workSetup,
+                "Direct employer post",
+              ],
+            }),
+          });
+          jobId = result.job.id;
+          publishedAt = result.job.source.publishedAt ?? result.job.postedAt;
+        }
+
+        savePublishedEmployerPost(
+          {
+            ...draft,
+            employerName,
+            id: jobId,
+            location,
+            ownerId: user?.id ?? "employer",
+            skills,
+            publishedAt,
+          },
+          draftStorageKey,
         );
+        window.dispatchEvent(new Event("jobfinder:jobs-updated"));
+      } catch (error) {
+        setPublishError(
+          error instanceof Error
+            ? error.message
+            : "JobFinder could not publish this job post.",
+        );
+        setPublishing(false);
         return;
       }
 
       setPublishError("");
       setPublished(true);
+      setPublishing(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
@@ -368,22 +438,21 @@ export function EmployerPostPage() {
           <span className="icon-tile icon-tile--success">
             <CheckCircle2 aria-hidden="true" />
           </span>
-          <p className="kicker">Direct employer post</p>
-          <h1>Your job post is ready</h1>
+      <p className="kicker">Direct Employer Post</p>
+      <h1>Your Job Post Is Ready</h1>
           <p>
-            <strong>{draft.title}</strong> is now represented as a direct
-            {employerName} listing in this frontend prototype. The production
-            backend will persist and publish the real record.
+            <strong>{draft.title}</strong> is now published as a direct{" "}
+            {employerName} listing on JobFinder.
           </p>
           <div className="cluster">
             <Link className="button button--primary" to="/employer">
-              Return to overview
+          Return to Overview
             </Link>
             <Link
               className="button button--secondary"
               to="/employer/candidates"
             >
-              View candidate matches
+          View Candidate Matches
             </Link>
           </div>
         </section>
@@ -395,36 +464,34 @@ export function EmployerPostPage() {
     <div className="page page--narrow employer-post-page">
       <Link className="back-link" to="/employer">
         <ArrowLeft size={18} aria-hidden="true" />
-        Back to employer overview
+        Back to Employer Overview
       </Link>
 
       <header className="page-header employer-wizard-header">
         <div className="cluster cluster--between">
           <div>
-            <span className="eyebrow">Create a direct job post</span>
+        <span className="eyebrow">Create a Job Post</span>
             <h1>
               {step === 1
-                ? "Describe the opportunity"
-                : step === 2
-                  ? "Set skills and location"
-                  : "Preview and publish"}
+            ? "Describe the Job"
+            : step === 2
+              ? "Set Skills and Location"
+              : "Preview and Publish"}
             </h1>
           </div>
-          <span className="quiet-badge" aria-live="polite">
-            {progressLabel}
-          </span>
+          <span className="quiet-badge">Step {step} of 3</span>
         </div>
         <p>
           {step === 1
-            ? "Give job seekers the core details they need before deciding to apply."
+            ? "Use familiar words so job seekers can quickly understand the work."
             : step === 2
-              ? "These requirements create transparent skill and geographic match evidence."
+              ? "Add the skills and work location used to find suitable people."
               : "Check how this vacancy will appear before making it public."}
         </p>
       </header>
 
       <ol className="employer-wizard-steps" aria-label="Job post progress">
-        {["Job details", "Skills & location", "Preview"].map((label, index) => {
+          {["Job Details", "Skills and Location", "Preview"].map((label, index) => {
           const itemStep = index + 1;
           const isCurrent = itemStep === step;
           const isComplete = itemStep < step;
@@ -462,16 +529,15 @@ export function EmployerPostPage() {
         <FormErrorSummary
           issues={validationIssues}
           summaryRef={validationSummaryRef}
-          title="Check the job post details"
+          title="Check the Job Post Details"
         />
         {step === 1 ? (
           <section className="surface employer-wizard-card" aria-labelledby="details-heading">
             <div className="surface__header">
               <div>
                 <p className="kicker">Step 1</p>
-                <h2 id="details-heading">Job details</h2>
+            <h2 id="details-heading">Job Details</h2>
               </div>
-              <BriefcaseBusiness aria-hidden="true" />
             </div>
             <div className="surface__body form">
               <label className="field">
@@ -528,77 +594,83 @@ export function EmployerPostPage() {
                     updateDraft("description", event.target.value)
                   }
                   required
-                  rows={7}
+                  rows={4}
                   value={draft.description}
                 />
                 <span className="field-hint">
-                  {draft.description.length}/1,200 characters
+                  Use short sentences and include only the most important
+                  tasks.
                 </span>
               </label>
 
-              <div className="form-grid form-grid--2">
-                <label className="field">
-                  <span className="field-label">Application deadline</span>
-                  <input
-                    className="input"
-                    min={new Date().toISOString().slice(0, 10)}
-                    onChange={(event) =>
-                      updateDraft("deadline", event.target.value)
-                    }
-                    required
-                    type="date"
-                    value={draft.deadline}
-                  />
-                </label>
-                <label className="field">
-                  <span className="field-label">Work schedule</span>
-                  <input
-                    className="input"
-                    maxLength={120}
-                    onChange={(event) =>
-                      updateDraft("schedule", event.target.value)
-                    }
-                    placeholder="For example, Monday to Friday, 8 AM–5 PM"
-                    required
-                    value={draft.schedule}
-                  />
-                </label>
-              </div>
+              <details className="employer-optional-details">
+            <summary>Additional Job Details</summary>
+                <div className="employer-optional-details__body">
+                  <div className="form-grid form-grid--2">
+                    <label className="field">
+                      <span className="field-label">Application deadline</span>
+                      <input
+                        className="input"
+                        min={new Date().toISOString().slice(0, 10)}
+                        onChange={(event) =>
+                          updateDraft("deadline", event.target.value)
+                        }
+                        required
+                        type="date"
+                        value={draft.deadline}
+                      />
+                    </label>
+                    <label className="field">
+                      <span className="field-label">Work schedule</span>
+                      <input
+                        className="input"
+                        maxLength={120}
+                        onChange={(event) =>
+                          updateDraft("schedule", event.target.value)
+                        }
+                        placeholder="For example, Monday to Friday, 8 AM–5 PM"
+                        required
+                        value={draft.schedule}
+                      />
+                    </label>
+                  </div>
 
-              <fieldset className="employer-fieldset">
-                <legend>
-                  <CircleDollarSign size={18} aria-hidden="true" />
-                  Monthly salary range
-                </legend>
-                <div className="form-grid form-grid--2">
-                  <label className="field">
-                    <span className="field-label">Minimum pay (PHP)</span>
-                    <input
-                      className="input"
-                      min="0"
-                      onChange={(event) =>
-                        updateDraft("salaryMin", event.target.value)
-                      }
-                      inputMode="numeric"
-                      type="number"
-                      value={draft.salaryMin}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">Maximum pay (PHP)</span>
-                    <input
-                      className="input"
-                      min={draft.salaryMin || "0"}
-                      onChange={(event) =>
-                        updateDraft("salaryMax", event.target.value)
-                      }
-                      inputMode="numeric"
-                      type="number"
-                      value={draft.salaryMax}
-                    />
-                  </label>
+                  <fieldset className="employer-fieldset">
+                    <legend>
+                      <CircleDollarSign size={18} aria-hidden="true" />
+                      Monthly salary range
+                    </legend>
+                    <div className="form-grid form-grid--2">
+                      <label className="field">
+                        <span className="field-label">Minimum pay (PHP)</span>
+                        <input
+                          className="input"
+                          min="0"
+                          onChange={(event) =>
+                            updateDraft("salaryMin", event.target.value)
+                          }
+                          inputMode="numeric"
+                          type="number"
+                          value={draft.salaryMin}
+                        />
+                      </label>
+                      <label className="field">
+                        <span className="field-label">Maximum pay (PHP)</span>
+                        <input
+                          className="input"
+                          min={draft.salaryMin || "0"}
+                          onChange={(event) =>
+                            updateDraft("salaryMax", event.target.value)
+                          }
+                          inputMode="numeric"
+                          type="number"
+                          value={draft.salaryMax}
+                        />
+                      </label>
+                    </div>
+                  </fieldset>
                 </div>
-              </fieldset>
+              </details>
             </div>
           </section>
         ) : null}
@@ -608,7 +680,7 @@ export function EmployerPostPage() {
             <section className="surface employer-wizard-card" aria-labelledby="skills-heading">
               <div className="surface__header">
                 <div>
-                  <p className="kicker">Required competencies</p>
+          <p className="kicker">Required Competencies</p>
                   <h2 id="skills-heading">Skills</h2>
                 </div>
                 <Sparkles aria-hidden="true" />
@@ -646,14 +718,13 @@ export function EmployerPostPage() {
                     <option value="Active Directory" />
                   </datalist>
                   <span className="field-hint">
-                    Exact and ontology-related skills can both contribute to
-                    SkillScore.
+                    Related skills can also help candidates match this job.
                   </span>
                 </div>
 
                 <div className="employer-selected-skills" aria-live="polite">
                   <div className="cluster cluster--between">
-                    <h3>Selected skills</h3>
+              <h3>Selected Skills</h3>
                     <span>{skills.length} added</span>
                   </div>
                   {skills.length ? (
@@ -683,9 +754,8 @@ export function EmployerPostPage() {
                 <div className="alert">
                   <Info aria-hidden="true" />
                   <span>
-                    JobFinder explains exact, related, and missing skills to
-                    both employers and applicants. It does not hide the basis
-                    of a recommendation.
+                    JobFinder shows which skills match, are related, or are
+                    still missing.
                   </span>
                 </div>
               </div>
@@ -694,7 +764,7 @@ export function EmployerPostPage() {
             <section className="surface employer-wizard-card" aria-labelledby="location-heading">
               <div className="surface__header">
                 <div>
-                  <p className="kicker">Workplace accessibility</p>
+            <p className="kicker">Work Location</p>
                   <h2 id="location-heading">Location</h2>
                 </div>
                 <MapPin aria-hidden="true" />
@@ -754,9 +824,8 @@ export function EmployerPostPage() {
                   </span>
                 </div>
                 <p className="field-hint">
-                  LocationScore uses the workplace and the candidate&apos;s
-                  saved travel preferences. Exact home addresses are not shown
-                  to employers.
+                  Travel matches use this workplace and the candidate&apos;s
+                  saved travel limit. Exact home addresses stay private.
                 </p>
               </div>
             </section>
@@ -768,10 +837,10 @@ export function EmployerPostPage() {
             <article className="surface employer-job-preview" aria-labelledby="preview-heading">
               <div className="surface__header">
                 <div>
-                  <p className="kicker">Public listing preview</p>
+                <p className="kicker">Public Listing Preview</p>
                   <h2 id="preview-heading">{draft.title}</h2>
                 </div>
-                <span className="badge badge--blue">Direct employer post</span>
+                <span className="badge badge--blue">Direct Employer Post</span>
               </div>
               <div className="surface__body stack stack--3">
                 <p className="employer-preview-company">{employerName}</p>
@@ -793,7 +862,7 @@ export function EmployerPostPage() {
                   </span>
                 </div>
                 <div>
-                  <h3>About the role</h3>
+              <h3>About the Role</h3>
                 <p className="employer-preview-description">
                   {draft.description}
                 </p>
@@ -802,7 +871,7 @@ export function EmployerPostPage() {
                 </p>
                 </div>
                 <div>
-                  <h3>Required skills</h3>
+              <h3>Required Skills</h3>
                   <div className="chip-row">
                     {skills.map((skill) => (
                       <span className="badge badge--outline" key={skill}>
@@ -815,34 +884,37 @@ export function EmployerPostPage() {
             </article>
 
             <aside className="stack stack--2">
-              <section className="surface match-preview-card" aria-labelledby="matching-preview-heading">
-                <div className="surface__header">
-                  <div>
-                    <p className="kicker">Transparent ranking</p>
-                    <h2 id="matching-preview-heading">How matches are scored</h2>
-                  </div>
-                </div>
-                <div className="surface__body stack stack--2">
-                  <div className="score-grid">
-                    <div className="score-card">
-                      <span className="score-card__value">70%</span>
-                      <span className="score-card__label">Skill fit weight</span>
-                    </div>
-                    <div className="score-card">
-                      <span className="score-card__value">30%</span>
-                      <span className="score-card__label">Location weight</span>
+              <details className="technical-disclosure">
+              <summary>How Matching Works</summary>
+                <section className="surface match-preview-card" aria-labelledby="matching-preview-heading">
+                  <div className="surface__header">
+                    <div>
+          <p className="kicker">Match Details</p>
+          <h2 id="matching-preview-heading">How Matches Are Scored</h2>
                     </div>
                   </div>
-                  <p className="match-breakdown__formula">
-                    FinalScore = (SkillScore × 0.70) + (LocationScore × 0.30)
-                  </p>
-                  <p className="field-hint">
-                    Candidate results show the exact evidence behind both
-                    scores. Ranking supports review; it does not automatically
-                    reject applicants.
-                  </p>
-                </div>
-              </section>
+                  <div className="surface__body stack stack--2">
+                    <div className="score-grid">
+                      <div className="score-card">
+                        <span className="score-card__value">70%</span>
+                        <span className="score-card__label">Skills</span>
+                      </div>
+                      <div className="score-card">
+                        <span className="score-card__value">30%</span>
+                        <span className="score-card__label">Travel fit</span>
+                      </div>
+                    </div>
+                    <p className="match-breakdown__formula">
+                      Final score = (skill score × 0.70) + (travel score ×
+                      0.30)
+                    </p>
+                    <p className="field-hint">
+                      The score supports review and never rejects a candidate
+                      automatically.
+                    </p>
+                  </div>
+                </section>
+              </details>
 
               <section className="surface employer-publish-check">
                 <div className="surface__body stack stack--2">
@@ -896,7 +968,7 @@ export function EmployerPostPage() {
               onClick={saveDraft}
               type="button"
             >
-              Save draft
+              Save Draft
             </button>
             <span className="employer-save-status" role="status">
               {savedMessage}
@@ -917,20 +989,17 @@ export function EmployerPostPage() {
               className="button button--primary"
               disabled={
                 (step === 2 && skills.length === 0) ||
-                (step === 3 && (!confirmed || !isOnline))
+                (step === 3 && (!confirmed || !isOnline || publishing))
               }
               type="submit"
             >
               {step === 3 ? (
                 <>
                   <Send aria-hidden="true" />
-                  Publish job
+                  {publishing ? "Publishing..." : "Publish Job"}
                 </>
               ) : (
-                <>
-                  Continue
-                  <ArrowRight aria-hidden="true" />
-                </>
+                "Continue"
               )}
             </button>
           </div>

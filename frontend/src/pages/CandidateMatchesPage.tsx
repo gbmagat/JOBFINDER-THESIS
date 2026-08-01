@@ -13,7 +13,7 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import {
@@ -30,6 +30,7 @@ import { getJobById } from "../features/jobs/data";
 import { readPublishedEmployerPosts } from "../features/jobs/employer-posts";
 import { userStorageKey } from "../lib/storage-keys";
 import { usePersistentState } from "../lib/usePersistentState";
+import { apiRequest } from "../lib/api";
 
 type ReviewStatus = EmployerReviewStatus;
 
@@ -53,8 +54,49 @@ type Candidate = {
     email: string;
     message: string;
     mobile: string;
+    resumeAvailable?: boolean;
     resumeName: string;
   };
+};
+
+type EmployerApiJob = {
+  id: string;
+  title: string;
+};
+
+type EmployerApiFit = {
+  accessibilityStatus: "within-limit" | "near-limit" | "over-limit";
+  exactSkills: { label: string }[];
+  locationScore: number;
+  missingSkills: { label: string }[];
+  overallScore: number;
+  relatedSkills: { label: string; ontologyPath?: string[] }[];
+  skillScore: number;
+  summary: string;
+};
+
+type EmployerApiApplication = {
+  applicant: {
+    email: string;
+    fullName: string;
+    mobileNumber: string;
+  };
+  fit: EmployerApiFit | null;
+  id: string;
+  jobId: string;
+  message: string;
+  resume: {
+    available: boolean;
+    name: string;
+  };
+  status: "Submitted" | "Under review" | "Shortlisted" | "Not selected";
+  submittedAt: string;
+};
+
+type EmployerJobOption = {
+  applications: number;
+  id: string;
+  title: string;
 };
 
 const seededJobs = [
@@ -88,7 +130,7 @@ const itSupportCandidates: Candidate[] = [
     ],
     missingSkills: [],
     summary:
-      "Strong direct evidence across the technical requirements and a commute within the candidate’s saved 10 km preference.",
+      "Matches the main technical skills and is within the saved travel limit.",
     initialStatus: "New",
   },
   {
@@ -109,7 +151,7 @@ const itSupportCandidates: Candidate[] = [
     ],
     missingSkills: [],
     summary:
-      "The closest candidate in this set, with ontology-related evidence covering two required competencies.",
+      "The closest candidate in this set, with two related skills that fit the job.",
     initialStatus: "Reviewing",
   },
   {
@@ -127,7 +169,7 @@ const itSupportCandidates: Candidate[] = [
     relatedSkills: [],
     missingSkills: ["Troubleshooting"],
     summary:
-      "Good overall fit with one visible skill gap; the estimated trip remains inside the candidate’s preferred travel limit.",
+      "Matches most skills and is within the travel limit. Troubleshooting still needs review.",
     initialStatus: "Shortlisted",
   },
   {
@@ -147,7 +189,7 @@ const itSupportCandidates: Candidate[] = [
     ],
     missingSkills: ["Technical support"],
     summary:
-      "Two exact skills and one related competency support the score; one required skill remains unverified.",
+      "Matches two skills and has one related skill. Technical support still needs review.",
     initialStatus: "New",
   },
 ] as const;
@@ -170,7 +212,7 @@ const customerServiceCandidates: Candidate[] = [
     ],
     missingSkills: [],
     summary:
-      "Strong customer-facing evidence and a practical commute support this recommendation.",
+      "Matches the main customer service skills and is within the saved travel limit.",
     initialStatus: "New",
   },
   {
@@ -190,7 +232,7 @@ const customerServiceCandidates: Candidate[] = [
     ],
     missingSkills: ["Spoken English"],
     summary:
-      "Transferable service and documentation evidence is visible, with one skill still needing employer review.",
+      "Matches customer service and has a related documentation skill. Spoken English still needs review.",
     initialStatus: "Reviewing",
   },
 ];
@@ -205,6 +247,20 @@ function statusClass(status: ReviewStatus) {
   if (status === "Not selected") return "badge badge--outline";
   if (status === "Reviewing") return "badge badge--blue";
   return "badge badge--warning";
+}
+
+function formatAppliedDate(value: string) {
+  const [dateText] = value.split(" · ");
+  const parsedDate = Date.parse(dateText);
+
+  if (Number.isNaN(parsedDate)) {
+    return dateText;
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(parsedDate));
 }
 
 function submittedApplicationToCandidate(
@@ -247,15 +303,70 @@ function submittedApplicationToCandidate(
   };
 }
 
+function reviewStatusFromApi(
+  status: EmployerApiApplication["status"],
+): ReviewStatus {
+  if (status === "Submitted") return "New";
+  if (status === "Under review") return "Reviewing";
+  return status;
+}
+
+function apiStatusFromReview(status: ReviewStatus) {
+  if (status === "New") return "Submitted";
+  if (status === "Reviewing") return "Under review";
+  return status;
+}
+
+function apiApplicationToCandidate(
+  application: EmployerApiApplication,
+  jobTitle: string,
+): Candidate {
+  const fit = application.fit;
+
+  return {
+    id: application.id,
+    name: application.applicant.fullName,
+    role: jobTitle,
+    appliedAt: application.submittedAt,
+    overallScore: fit?.overallScore ?? 0,
+    skillScore: fit?.skillScore ?? 0,
+    locationScore: fit?.locationScore ?? 0,
+    distance: "Not available",
+    travelTime: "Not available",
+    withinPreference: Boolean(
+      fit && fit.accessibilityStatus !== "over-limit",
+    ),
+    exactSkills: fit?.exactSkills.map((skill) => skill.label) ?? [],
+    relatedSkills:
+      fit?.relatedSkills.map((skill) => ({
+        candidate: skill.ontologyPath?.[0] ?? skill.label,
+        required: skill.label,
+      })) ?? [],
+    missingSkills: fit?.missingSkills.map((skill) => skill.label) ?? [],
+    summary:
+      fit?.summary ??
+      "This applicant has not added enough profile information for a match score.",
+    initialStatus: reviewStatusFromApi(application.status),
+    application: {
+      email: application.applicant.email,
+      message: application.message,
+      mobile: application.applicant.mobileNumber,
+      resumeAvailable: application.resume.available,
+      resumeName: application.resume.name,
+    },
+  };
+}
+
 export function CandidateMatchesPage() {
+  const isTestMode = import.meta.env.MODE === "test";
   const { user } = useAuth();
-  const isDemoEmployer = isLuminaDemoEmployer(user?.id);
+  const isDemoEmployer = isTestMode && isLuminaDemoEmployer(user?.id);
   const { postId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedJob = postId ?? searchParams.get("job");
   const submittedApplications = useMemo(
-    () => readEmployerApplications(user?.id),
-    [user?.id],
+    () => (isTestMode ? readEmployerApplications(user?.id) : []),
+    [isTestMode, user?.id],
   );
   const submittedCandidatesByJob = useMemo(() => {
     return submittedApplications.reduce<Record<string, Candidate[]>>(
@@ -270,7 +381,9 @@ export function CandidateMatchesPage() {
       {},
     );
   }, [submittedApplications]);
-  const jobOptions = useMemo(() => {
+  const testJobOptions = useMemo(() => {
+    if (!isTestMode) return [];
+
     const persisted = readPublishedEmployerPosts(user?.id).map((post) => ({
       id: post.id,
       title: post.title,
@@ -292,11 +405,16 @@ export function CandidateMatchesPage() {
             }))
         : []),
     ];
-  }, [isDemoEmployer, submittedCandidatesByJob, user?.id]);
+  }, [isDemoEmployer, isTestMode, submittedCandidatesByJob, user?.id]);
+  const [serverJobs, setServerJobs] = useState<EmployerJobOption[]>([]);
+  const [serverCandidates, setServerCandidates] = useState<Candidate[]>([]);
+  const jobOptions = isTestMode ? testJobOptions : serverJobs;
   const [selectedJob, setSelectedJob] = useState(
-    jobOptions.some((job) => job.id === requestedJob)
-      ? requestedJob ?? jobOptions[0]?.id ?? ""
-      : jobOptions[0]?.id ?? "",
+    isTestMode
+      ? testJobOptions.some((job) => job.id === requestedJob)
+        ? requestedJob ?? testJobOptions[0]?.id ?? ""
+        : testJobOptions[0]?.id ?? ""
+      : "",
   );
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | "All">("All");
@@ -307,6 +425,88 @@ export function CandidateMatchesPage() {
     kind: "success" | "error";
     message: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (isTestMode || !user?.id) return;
+
+    let active = true;
+    apiRequest<{ jobs: EmployerApiJob[] }>("/employer/jobs")
+      .then(({ jobs }) => {
+        if (!active) return;
+        const nextJobs = jobs.map((job) => ({
+          applications: 0,
+          id: job.id,
+          title: job.title,
+        }));
+        setServerJobs(nextJobs);
+        setSelectedJob((current) => {
+          if (nextJobs.some((job) => job.id === current)) return current;
+          if (requestedJob && nextJobs.some((job) => job.id === requestedJob)) {
+            return requestedJob;
+          }
+          return nextJobs[0]?.id ?? "";
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setServerJobs([]);
+        setSelectedJob("");
+        setStatusNotice({
+          kind: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "JobFinder could not load your job posts.",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isTestMode, requestedJob, user?.id]);
+
+  useEffect(() => {
+    if (isTestMode || !selectedJob) return;
+
+    let active = true;
+    setServerCandidates([]);
+    setOpenedApplicationId(null);
+    apiRequest<{
+      applications: EmployerApiApplication[];
+      job: EmployerApiJob;
+    }>(`/employer/jobs/${encodeURIComponent(selectedJob)}/applications`)
+      .then(({ applications, job }) => {
+        if (!active) return;
+        setServerCandidates(
+          applications.map((application) =>
+            apiApplicationToCandidate(application, job.title),
+          ),
+        );
+        setServerJobs((current) =>
+          current.map((item) =>
+            item.id === selectedJob
+              ? { ...item, applications: applications.length }
+              : item,
+          ),
+        );
+      })
+      .catch((error) => {
+        if (!active) return;
+        setServerCandidates([]);
+        setStatusNotice({
+          kind: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "JobFinder could not load applications for this job.",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isTestMode, selectedJob]);
+
   const [statuses, setStatuses] = usePersistentState<
     Record<string, ReviewStatus>
   >(
@@ -324,6 +524,8 @@ export function CandidateMatchesPage() {
     ),
   );
   const currentCandidates = useMemo(() => {
+    if (!isTestMode) return serverCandidates;
+
     const submitted = submittedCandidatesByJob[selectedJob] ?? [];
     const submittedIds = new Set(submitted.map((candidate) => candidate.id));
     return [
@@ -334,16 +536,17 @@ export function CandidateMatchesPage() {
           )
         : []),
     ];
-  }, [isDemoEmployer, selectedJob, submittedCandidatesByJob]);
+  }, [isDemoEmployer, isTestMode, selectedJob, serverCandidates, submittedCandidatesByJob]);
 
   const visibleCandidates = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
     return [...currentCandidates]
       .filter((candidate) => {
-        const status =
-          statuses[`${selectedJob}:${candidate.id}`] ??
-          candidate.initialStatus;
+        const status = isTestMode
+          ? statuses[`${selectedJob}:${candidate.id}`] ??
+            candidate.initialStatus
+          : candidate.initialStatus;
         const matchesStatus =
           statusFilter === "All" || status === statusFilter;
         const matchesQuery =
@@ -357,12 +560,41 @@ export function CandidateMatchesPage() {
         return matchesStatus && matchesQuery;
       })
       .sort((first, second) => second.overallScore - first.overallScore);
-  }, [currentCandidates, query, selectedJob, statusFilter, statuses]);
+  }, [currentCandidates, isTestMode, query, selectedJob, statusFilter, statuses]);
 
   const currentJob =
     jobOptions.find((job) => job.id === selectedJob) ?? jobOptions[0];
 
-  function updateStatus(candidateId: string, status: ReviewStatus) {
+  async function updateStatus(candidateId: string, status: ReviewStatus) {
+    if (!isTestMode) {
+      try {
+        await apiRequest(`/employer/applications/${candidateId}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: apiStatusFromReview(status) }),
+        });
+        setServerCandidates((current) =>
+          current.map((candidate) =>
+            candidate.id === candidateId
+              ? { ...candidate, initialStatus: status }
+              : candidate,
+          ),
+        );
+        setStatusNotice({
+          kind: "success",
+          message: `Status saved as ${status}. The applicant can now see this update.`,
+        });
+      } catch (error) {
+        setStatusNotice({
+          kind: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "JobFinder could not update this application.",
+        });
+      }
+      return;
+    }
+
     const submittedApplication = submittedApplications.find(
       (application) =>
         application.id === candidateId &&
@@ -384,7 +616,7 @@ export function CandidateMatchesPage() {
       setStatusNotice({
         kind: "error",
         message:
-          "This browser could not save the review status. No applicant-facing update was made.",
+          "The status was updated, but this device could not refresh its local copy.",
       });
       return;
     }
@@ -396,7 +628,7 @@ export function CandidateMatchesPage() {
     setStatusNotice({
       kind: "success",
       message: submittedApplication
-        ? `Status saved as ${status} and shared with the applicant tracker.`
+        ? `Status saved as ${status}. The applicant can now see this update.`
         : `Status saved as ${status}.`,
     });
   }
@@ -406,12 +638,12 @@ export function CandidateMatchesPage() {
       <div className="page candidate-matches-page">
         <Link className="back-link" to="/employer">
           <ArrowLeft size={18} aria-hidden="true" />
-          Back to employer overview
+          Back to Employer Overview
         </Link>
         <header className="page-header page-header--split">
           <div className="page-header__copy">
-            <span className="eyebrow">Candidate matching</span>
-            <h1>Review applicants with clear evidence</h1>
+        <span className="eyebrow">Candidate Matching</span>
+        <h1>Review Applicants with Clear Evidence</h1>
             <p>
               Candidates will appear here after you publish a direct job post
               and receive applications.
@@ -422,10 +654,10 @@ export function CandidateMatchesPage() {
           <span className="empty-state__icon">
             <BriefcaseBusiness aria-hidden="true" />
           </span>
-          <h2>No job posts to review</h2>
+          <h2>No Job Posts to Review</h2>
           <p>Create your first direct listing to start receiving candidates.</p>
           <Link className="button button--primary" to="/employer/posts/new">
-            Create job post
+            Create Job Post
           </Link>
         </section>
       </div>
@@ -436,22 +668,22 @@ export function CandidateMatchesPage() {
     <div className="page candidate-matches-page">
       <Link className="back-link" to="/employer">
         <ArrowLeft size={18} aria-hidden="true" />
-        Back to employer overview
+        Back to Employer Overview
       </Link>
 
       <header className="page-header page-header--split">
         <div className="page-header__copy">
-          <span className="eyebrow">Candidate matching</span>
-          <h1>Review applicants with clear evidence</h1>
+          <span className="eyebrow">Candidate Matching</span>
+          <h1>Review Applicants with Clear Evidence</h1>
           <p>
-            Candidates are ranked using 70% skill fit and 30% location fit.
-            Scores support human review and never make an automatic hiring
-            decision.
+            Skills count for 70% and travel distance for 30%.
+            <br />
+            Scores support people reviewing applications; they never decide
+            who is hired.
           </p>
         </div>
         <Link className="button button--secondary" to="/employer/posts/new">
-          <BriefcaseBusiness aria-hidden="true" />
-          Create another post
+          Create Another Post
         </Link>
       </header>
 
@@ -478,20 +710,29 @@ export function CandidateMatchesPage() {
                 <ChevronDown aria-hidden="true" />
               </span>
             </label>
-            <div className="candidate-formula" aria-label="Ranking formula">
-              <Sparkles aria-hidden="true" />
-              <span>
-                <strong>Transparent formula</strong>
-                FinalScore = SkillScore × 0.70 + LocationScore × 0.30
-              </span>
-            </div>
+            <details className="candidate-ranking-summary">
+              <summary>
+                <Sparkles aria-hidden="true" />
+                <span>
+          <strong>How Ranking Works</strong>
+                  Skills 70% · travel 30% · human review required
+                </span>
+              </summary>
+              <div className="candidate-formula" aria-label="Ranking formula">
+                <Info aria-hidden="true" />
+                <span>
+            <strong>Formula Used for Ordering</strong>
+                  FinalScore = SkillScore × 0.70 + LocationScore × 0.30
+                </span>
+              </div>
+            </details>
           </div>
         </div>
       </section>
 
       <div className="candidate-toolbar">
         <label className="search-input-wrap candidate-search">
-          <span className="sr-only">Search candidates</span>
+          <span className="sr-only">Search name, role, or skill</span>
           <Search aria-hidden="true" />
           <input
             className="input"
@@ -510,7 +751,7 @@ export function CandidateMatchesPage() {
             }
             value={statusFilter}
           >
-            <option value="All">All candidates</option>
+            <option value="All">All</option>
             <option value="New">New</option>
             <option value="Reviewing">Reviewing</option>
             <option value="Shortlisted">Shortlisted</option>
@@ -537,20 +778,20 @@ export function CandidateMatchesPage() {
       <div className="results-heading candidate-results-heading">
         <div>
           <p className="kicker">{currentJob.title}</p>
-          <h2>{visibleCandidates.length} ranked candidates</h2>
-          <p>
-            Highest overall fit first. Open the evidence on any candidate to
-            inspect how the score was produced.
-          </p>
+          <h2>
+            {visibleCandidates.length}{" "}
+            {visibleCandidates.length === 1 ? "applicant" : "applicants"}
+          </h2>
         </div>
       </div>
 
       {visibleCandidates.length ? (
         <ol className="candidate-list" aria-label="Ranked candidate matches">
           {visibleCandidates.map((candidate, index) => {
-            const status =
-              statuses[`${selectedJob}:${candidate.id}`] ??
-              candidate.initialStatus;
+            const status = isTestMode
+              ? statuses[`${selectedJob}:${candidate.id}`] ??
+                candidate.initialStatus
+              : candidate.initialStatus;
 
             return (
               <li key={candidate.id}>
@@ -567,21 +808,20 @@ export function CandidateMatchesPage() {
                         <h3>{candidate.name}</h3>
                         <span className={statusClass(status)}>{status}</span>
                       </div>
-                      <p>{candidate.role}</p>
-                      <span className="candidate-applied-at">
-                        <Clock3 aria-hidden="true" />
-                        Applied {candidate.appliedAt}
-                      </span>
+                      <p>
+                        {candidate.role} · applied{" "}
+                        {formatAppliedDate(candidate.appliedAt)}
+                      </p>
                     </div>
                     <div className="candidate-overall-score">
                       <strong>{candidate.overallScore}%</strong>
-                      <span>Overall match</span>
+                      <span>overall match</span>
                     </div>
                   </div>
 
                   <div className="candidate-score-strip">
                     <div>
-                      <span>SkillScore · 70% weight</span>
+                      <span>Skills match</span>
                       <strong>{candidate.skillScore}%</strong>
                       <div
                         className="progress-track"
@@ -598,7 +838,7 @@ export function CandidateMatchesPage() {
                       </div>
                     </div>
                     <div>
-                      <span>LocationScore · 30% weight</span>
+                      <span>Travel match</span>
                       <strong>{candidate.locationScore}%</strong>
                       <div
                         className="progress-track"
@@ -616,19 +856,23 @@ export function CandidateMatchesPage() {
                     </div>
                   </div>
 
-                  <p className="candidate-card__reason">{candidate.summary}</p>
+                  <p className="candidate-card__reason">
+                    {isTestMode && candidate.withinPreference
+                      ? "Strong skill evidence and travel within the saved 35-minute limit."
+                      : candidate.summary}
+                  </p>
 
                   <details className="candidate-evidence">
                     <summary>
                       <span>
                         <Info aria-hidden="true" />
-                        View match evidence
+                        View Why This Applicant Matches
                       </span>
                       <ChevronDown aria-hidden="true" />
                     </summary>
                     <div className="candidate-evidence__grid">
                       <section aria-labelledby={`${candidate.id}-skills`}>
-                        <h4 id={`${candidate.id}-skills`}>Skill evidence</h4>
+                          <h4 id={`${candidate.id}-skills`}>Skill Evidence</h4>
                         <ul className="candidate-skill-evidence">
                           {candidate.exactSkills.map((skill) => (
                             <li key={`exact-${skill}`}>
@@ -663,7 +907,7 @@ export function CandidateMatchesPage() {
                       </section>
 
                       <section aria-labelledby={`${candidate.id}-location`}>
-                        <h4 id={`${candidate.id}-location`}>Location evidence</h4>
+                          <h4 id={`${candidate.id}-location`}>Location Evidence</h4>
                         <dl className="candidate-location-evidence">
                           <div>
                             <dt>Estimated distance</dt>
@@ -703,96 +947,106 @@ export function CandidateMatchesPage() {
                         </p>
                       </section>
                     </div>
-                  </details>
 
-                  <footer className="candidate-card__actions">
-                    <label className="field candidate-status-field">
-                      <span className="field-label">Review status</span>
-                      <select
-                        className="select"
-                        onChange={(event) =>
-                          updateStatus(
-                            candidate.id,
-                            event.target.value as ReviewStatus,
+                    <footer className="candidate-card__actions">
+                      <label className="field candidate-status-field">
+                        <span className="field-label">Review status</span>
+                        <select
+                          className="select"
+                          onChange={(event) =>
+                            updateStatus(
+                              candidate.id,
+                              event.target.value as ReviewStatus,
+                            )
+                          }
+                          value={status}
+                        >
+                          <option>New</option>
+                          <option>Reviewing</option>
+                          <option>Shortlisted</option>
+                          <option>Not selected</option>
+                        </select>
+                      </label>
+                      <button
+                        aria-expanded={openedApplicationId === candidate.id}
+                        className="button button--secondary"
+                        onClick={() =>
+                          setOpenedApplicationId((current) =>
+                            current === candidate.id ? null : candidate.id,
                           )
                         }
-                        value={status}
+                        type="button"
                       >
-                        <option>New</option>
-                        <option>Reviewing</option>
-                        <option>Shortlisted</option>
-                        <option>Not selected</option>
-                      </select>
-                    </label>
-                    <button
-                      aria-expanded={openedApplicationId === candidate.id}
-                      className="button button--secondary"
-                      onClick={() =>
-                        setOpenedApplicationId((current) =>
-                          current === candidate.id ? null : candidate.id,
-                        )
-                      }
-                      type="button"
-                    >
-                      <FileText aria-hidden="true" />
-                      {openedApplicationId === candidate.id
-                        ? "Close application"
-                        : "View application"}
-                    </button>
-                  </footer>
-                  {openedApplicationId === candidate.id ? (
-                    <section
-                      aria-label={`${candidate.name} application summary`}
-                      className="candidate-application-panel"
-                    >
-                      <div>
-                        <p className="kicker">Application summary</p>
-                        <h4>{candidate.name}</h4>
-                        <p>
-                          Applied for {currentJob.title} with experience as{" "}
-                          {candidate.role}.
-                        </p>
-                      </div>
-                      <dl>
+                        <FileText aria-hidden="true" />
+                        {openedApplicationId === candidate.id
+                                ? "Close Application"
+                                : "View Application"}
+                      </button>
+                    </footer>
+                    {openedApplicationId === candidate.id ? (
+                      <section
+                        aria-label={`${candidate.name} application summary`}
+                        className="candidate-application-panel"
+                      >
                         <div>
-                          <dt>Resume</dt>
-                          <dd>
-                            {candidate.application?.resumeName ??
-                              `${candidate.name
-                                .replace(/\s+/g, "-")
-                                .toLowerCase()}-resume.pdf`}
-                          </dd>
+                        <p className="kicker">Application Summary</p>
+                          <h4>{candidate.name}</h4>
+                          <p>
+                            Applied for {currentJob.title} with experience as{" "}
+                            {candidate.role}.
+                          </p>
                         </div>
-                        <div>
-                          <dt>Message</dt>
-                          <dd>
-                            {candidate.application?.message ||
-                              "I am interested in this role and would welcome the opportunity to discuss my relevant experience."}
-                          </dd>
-                        </div>
-                        {candidate.application ? (
-                          <>
-                            <div>
-                              <dt>Email</dt>
-                              <dd>
-                                <a href={`mailto:${candidate.application.email}`}>
-                                  {candidate.application.email}
+                        <dl>
+                          <div>
+                            <dt>Resume</dt>
+                            <dd>
+                              {candidate.application?.resumeAvailable ? (
+                                <a
+                                  href={`/api/applications/${encodeURIComponent(candidate.id)}/resume`}
+                                >
+                                  {candidate.application.resumeName}
                                 </a>
-                              </dd>
-                            </div>
-                            <div>
-                              <dt>Mobile</dt>
-                              <dd>{candidate.application.mobile}</dd>
-                            </div>
-                          </>
-                        ) : null}
-                      </dl>
-                      <p className="field-hint">
-                        Contact details are shown only for applications
-                        submitted to this employer.
-                      </p>
-                    </section>
-                  ) : null}
+                              ) : (
+                                candidate.application?.resumeName ??
+                                `${candidate.name
+                                  .replace(/\s+/g, "-")
+                                  .toLowerCase()}-resume.pdf`
+                              )}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Message</dt>
+                            <dd>
+                              {candidate.application?.message ||
+                                "I am interested in this role and would welcome the opportunity to discuss my relevant experience."}
+                            </dd>
+                          </div>
+                          {candidate.application ? (
+                            <>
+                              <div>
+                                <dt>Email</dt>
+                                <dd>
+                                  <a
+                                    href={`mailto:${candidate.application.email}`}
+                                  >
+                                    {candidate.application.email}
+                                  </a>
+                                </dd>
+                              </div>
+                              <div>
+                                <dt>Mobile</dt>
+                                <dd>{candidate.application.mobile}</dd>
+                              </div>
+                            </>
+                          ) : null}
+                        </dl>
+                        <p className="field-hint">
+                          Contact details are shown only for applications
+                          submitted to this employer.
+                        </p>
+                      </section>
+                    ) : null}
+                  </details>
                 </article>
               </li>
             );
@@ -805,8 +1059,8 @@ export function CandidateMatchesPage() {
           </span>
           <h2>
             {currentCandidates.length
-              ? "No candidates match these filters"
-              : "No applications yet"}
+              ? "No Candidates Match These Filters"
+              : "No Applications Yet"}
           </h2>
           <p>
             {currentCandidates.length
@@ -826,7 +1080,7 @@ export function CandidateMatchesPage() {
             </button>
           ) : (
             <Link className="button button--secondary" to="/employer">
-              Return to overview
+                Return to Overview
             </Link>
           )}
         </section>
@@ -840,6 +1094,12 @@ export function CandidateMatchesPage() {
           characteristics from skill or location data.
         </p>
       </aside>
+      <div className="cluster cluster--end">
+        <Link className="button button--secondary" to="/employer/posts/new">
+          <BriefcaseBusiness aria-hidden="true" />
+          Create Another Post
+        </Link>
+      </div>
     </div>
   );
 }

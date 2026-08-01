@@ -22,6 +22,7 @@ import {
 import { Link } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import { isLuminaDemoEmployer } from "../features/employer/demo-workspace";
+import { apiRequest } from "../lib/api";
 import { userStorageKey } from "../lib/storage-keys";
 import {
   clearNativeFieldError,
@@ -43,6 +44,16 @@ type CompanyProfile = {
   province: string;
   description: string;
   benefits: string;
+};
+
+type CompanyApiResponse = {
+  company: {
+    companyName: string;
+    description: string;
+    address: string;
+    website: string;
+    updatedAt: string;
+  };
 };
 
 const luminaDemoProfile: CompanyProfile = {
@@ -130,6 +141,62 @@ function readCompanyProfile(
   }
 }
 
+function writeCompanyProfile(
+  storageKey: string,
+  profile: CompanyProfile,
+): boolean {
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(profile));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function mergeCompanyApiProfile(
+  deviceProfile: CompanyProfile,
+  company: CompanyApiResponse["company"],
+): CompanyProfile {
+  const addressParts = company.address
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  let addressFields: Partial<CompanyProfile> = {};
+
+  if (addressParts.length >= 4) {
+    addressFields = {
+      street: addressParts.slice(0, -3).join(", "),
+      barangay: addressParts.at(-3) ?? "",
+      city: addressParts.at(-2) ?? "",
+      province: addressParts.at(-1) ?? "",
+    };
+  } else if (addressParts.length === 3) {
+    addressFields = {
+      street: "",
+      barangay: addressParts[0],
+      city: addressParts[1],
+      province: addressParts[2],
+    };
+  } else if (addressParts.length === 2) {
+    addressFields = {
+      street: "",
+      barangay: addressParts[0],
+      city: addressParts[1],
+      province: deviceProfile.province,
+    };
+  } else if (addressParts.length === 1) {
+    addressFields = { street: company.address };
+  }
+
+  return {
+    ...deviceProfile,
+    ...addressFields,
+    name: company.companyName,
+    description: company.description,
+    website: company.website,
+  };
+}
+
 export function CompanyProfilePage() {
   const { user } = useAuth();
   const storageKey = userStorageKey(COMPANY_PROFILE_STORAGE_KEY, user?.id);
@@ -154,11 +221,35 @@ export function CompanyProfilePage() {
   const validationSummaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setProfile(readCompanyProfile(storageKey, initialProfile));
+    const cachedProfile = readCompanyProfile(storageKey, initialProfile);
+    setProfile(cachedProfile);
     setSaved(false);
     setSaveError("");
     setLogoName("");
     setValidationIssues([]);
+
+    if (import.meta.env.MODE === "test") return;
+
+    let isCurrent = true;
+    void apiRequest<CompanyApiResponse>("/employer/company")
+      .then(({ company }) => {
+        if (!isCurrent) return;
+        const mergedProfile = mergeCompanyApiProfile(cachedProfile, company);
+        setProfile(mergedProfile);
+        writeCompanyProfile(storageKey, mergedProfile);
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent) return;
+        setSaveError(
+          error instanceof Error
+            ? error.message
+            : "JobFinder could not load the company profile.",
+        );
+      });
+
+    return () => {
+      isCurrent = false;
+    };
   }, [initialProfile, storageKey]);
 
   function updateProfile<Key extends keyof CompanyProfile>(
@@ -169,7 +260,7 @@ export function CompanyProfilePage() {
     setSaved(false);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextIssues = collectFormValidationIssues(event.currentTarget);
     setValidationIssues(nextIssues);
@@ -180,17 +271,52 @@ export function CompanyProfilePage() {
       return;
     }
 
-    try {
-      window.localStorage.setItem(
-        storageKey,
-        JSON.stringify(profile),
+    const cached = writeCompanyProfile(storageKey, profile);
+    if (import.meta.env.MODE === "test") {
+      setSaved(cached);
+      setSaveError(
+        cached
+          ? ""
+          : "This browser blocked local saving. Your edits are still available until you leave this page.",
       );
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    const address = [
+      profile.street,
+      profile.barangay,
+      profile.city,
+      profile.province,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    try {
+      const result = await apiRequest<CompanyApiResponse>("/employer/company", {
+        method: "PUT",
+        body: JSON.stringify({
+          companyName: profile.name,
+          description: profile.description,
+          address,
+          website: profile.website,
+        }),
+      });
+      const mergedProfile = mergeCompanyApiProfile(profile, result.company);
+      setProfile(mergedProfile);
+      writeCompanyProfile(storageKey, mergedProfile);
       setSaved(true);
-      setSaveError("");
-    } catch {
+      setSaveError(
+        cached
+          ? ""
+          : "Company profile saved, but this browser could not keep the extra device-only details.",
+      );
+    } catch (error) {
       setSaved(false);
       setSaveError(
-        "This browser blocked local saving. Your edits are still available until you leave this page.",
+        error instanceof Error
+          ? error.message
+          : "JobFinder could not save the company profile.",
       );
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -213,13 +339,13 @@ export function CompanyProfilePage() {
     <div className="page company-profile-page">
       <Link className="back-link" to="/employer">
         <ArrowLeft size={18} aria-hidden="true" />
-        Back to employer overview
+        Back to Employer Overview
       </Link>
 
       <header className="page-header page-header--split">
         <div className="page-header__copy">
-          <span className="eyebrow">Employer identity</span>
-          <h1>Company profile</h1>
+          <span className="eyebrow">Employer Identity</span>
+          <h1>Company Profile</h1>
           <p>
             Keep the information applicants see consistent across every direct
             job post from your company.
@@ -234,9 +360,7 @@ export function CompanyProfilePage() {
       {saved ? (
         <div className="alert alert--success company-save-alert" role="status">
           <CheckCircle2 aria-hidden="true" />
-          <span>
-            Company profile changes were saved for this frontend prototype.
-          </span>
+          <span>Company profile saved.</span>
         </div>
       ) : null}
       {saveError ? (
@@ -257,13 +381,13 @@ export function CompanyProfilePage() {
           <FormErrorSummary
             issues={validationIssues}
             summaryRef={validationSummaryRef}
-            title="Check the company profile details"
+          title="Check the Company Profile Details"
           />
           <section className="surface company-form-section" aria-labelledby="identity-heading">
             <div className="surface__header">
               <div>
-                <p className="kicker">Public identity</p>
-                <h2 id="identity-heading">Company information</h2>
+            <p className="kicker">Public Identity</p>
+            <h2 id="identity-heading">Company Information</h2>
               </div>
               <Building2 aria-hidden="true" />
             </div>
@@ -385,8 +509,8 @@ export function CompanyProfilePage() {
           <section className="surface company-form-section" aria-labelledby="contact-heading">
             <div className="surface__header">
               <div>
-                <p className="kicker">Applicant contact</p>
-                <h2 id="contact-heading">Contact and workplace</h2>
+            <p className="kicker">Applicant Contact</p>
+            <h2 id="contact-heading">Contact and Workplace</h2>
               </div>
               <MapPin aria-hidden="true" />
             </div>
@@ -491,8 +615,8 @@ export function CompanyProfilePage() {
           <section className="surface company-form-section" aria-labelledby="benefits-heading">
             <div className="surface__header">
               <div>
-                <p className="kicker">Candidate expectations</p>
-                <h2 id="benefits-heading">Benefits and workplace highlights</h2>
+            <p className="kicker">Candidate Expectations</p>
+            <h2 id="benefits-heading">Benefits and Workplace Highlights</h2>
               </div>
               <UsersRound aria-hidden="true" />
             </div>
@@ -521,7 +645,7 @@ export function CompanyProfilePage() {
             </span>
             <button className="button button--primary" type="submit">
               <Save aria-hidden="true" />
-              Save company profile
+            Save Company Profile
             </button>
           </footer>
         </form>
@@ -538,7 +662,7 @@ export function CompanyProfilePage() {
                   .toUpperCase() || "CO"}
               </span>
               <div>
-                <p className="kicker">Applicant preview</p>
+          <p className="kicker">Applicant Preview</p>
                 <h2 id="company-preview-heading">
                   {profile.name || "Company name"}
                 </h2>
@@ -563,7 +687,7 @@ export function CompanyProfilePage() {
                 ) : null}
               </div>
               <div>
-                <h3>About us</h3>
+            <h3>About Us</h3>
                 <p>
                   {profile.description ||
                     "Your company description will appear here."}
@@ -571,7 +695,7 @@ export function CompanyProfilePage() {
               </div>
               {benefits.length ? (
                 <div>
-                  <h3>Benefits and highlights</h3>
+            <h3>Benefits and Highlights</h3>
                   <ul className="company-benefit-list">
                     {benefits.map((benefit) => (
                       <li key={benefit}>

@@ -127,7 +127,7 @@ interface JobSourceBase {
 export interface DirectEmployerJobSource extends JobSourceBase {
   origin: "direct-employer";
   organizationType: "employer";
-  ownerId: string;
+  ownerId?: string;
 }
 
 export interface PesoLguDatasetJobSource extends JobSourceBase {

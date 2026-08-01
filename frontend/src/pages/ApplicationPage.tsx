@@ -23,7 +23,6 @@ import {
   Phone,
   Save,
   Send,
-  ShieldCheck,
   UserRound,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
@@ -35,13 +34,15 @@ import {
 } from "../features/applications/storage-contract";
 import { readSubmittedApplications } from "../features/applications/submitted-storage";
 import { useAuth } from "../features/auth/AuthContext";
-import { applicationMethodLabel, getJobById } from "../features/jobs/data";
+import { applicationMethodLabel } from "../features/jobs/data";
+import { useJobs } from "../features/jobs/JobsContext";
 import { SourceProvenance } from "../features/jobs/SourceProvenance";
 import type {
   ApplicationMethod,
   JobListing,
 } from "../features/jobs/types";
 import { userStorageKey } from "../lib/storage-keys";
+import { apiRequest } from "../lib/api";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 const MAX_RESUME_SIZE_BYTES = 5 * 1024 * 1024;
@@ -69,9 +70,9 @@ interface StoredApplicationDraft {
 }
 
 const APPLICATION_STEPS = [
-  { number: 1, label: "Your details" },
-  { number: 2, label: "Resume and message" },
-  { number: 3, label: "Review and submit" },
+  { number: 1, label: "Your Details" },
+  { number: 2, label: "Resume" },
+  { number: 3, label: "Review" },
 ] as const;
 
 const FIELD_IDS: Record<ApplicationField, string> = {
@@ -300,9 +301,9 @@ function validateResumeAndMessage(
   if (!resumeFile) {
     errors.resume = "Choose the resume you want to send.";
   } else {
-    const extensionIsAllowed = /\.(pdf|doc|docx)$/i.test(resumeFile.name);
+    const extensionIsAllowed = /\.pdf$/i.test(resumeFile.name);
     if (!extensionIsAllowed) {
-      errors.resume = "Use a PDF, DOC, or DOCX resume.";
+      errors.resume = "Use a PDF resume.";
     } else if (resumeFile.size > MAX_RESUME_SIZE_BYTES) {
       errors.resume = "Choose a resume smaller than 5 MB.";
     }
@@ -342,7 +343,7 @@ function ApplicationErrorSummary({
       <AlertCircle size={22} aria-hidden="true" />
       <div>
         <h2 id="application-error-heading">
-          Check {entries.length === 1 ? "this detail" : "these details"}
+        Check {entries.length === 1 ? "This Detail" : "These Details"}
         </h2>
         <ul>
           {entries.map(([field, message]) => (
@@ -393,6 +394,7 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
       : "",
   );
   const [submissionStorageError, setSubmissionStorageError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const isOnline = useOnlineStatus();
   const [submittedApplication, setSubmittedApplication] =
     useState<StoredSubmittedApplication | null>(null);
@@ -414,6 +416,25 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
       setSubmissionStorageError("");
     }
   }, [isOnline]);
+
+  useEffect(() => {
+    if (initialDraft || import.meta.env.MODE === "test") return;
+
+    let active = true;
+    apiRequest<{
+      profile: { fullName: string; mobileNumber: string };
+    }>("/profile")
+      .then(({ profile }) => {
+        if (!active) return;
+        setFullName((current) => current || profile.fullName);
+        setMobile((current) => current || profile.mobileNumber);
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [initialDraft]);
 
   function clearFieldError(field: ApplicationField) {
     setErrors((current) => {
@@ -502,7 +523,7 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
     );
   }
 
-  function submitApplication(event: FormEvent<HTMLFormElement>) {
+  async function submitApplication(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!isOnline) {
@@ -527,8 +548,8 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
       return;
     }
 
-    const appliedAt = new Date().toISOString();
-    const application: StoredSubmittedApplication = {
+    setSubmitting(true);
+    const draftApplication: StoredSubmittedApplication = {
       version: 1,
       id: `JF-${Date.now().toString(36).toUpperCase()}`,
       jobId: job.id,
@@ -539,9 +560,9 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
         user?.id ?? `mock-${email.trim().toLowerCase()}`,
       recipientEmployerId:
         job.source.origin === "direct-employer"
-          ? job.source.ownerId
+          ? job.source.ownerId ?? "server-managed-employer"
           : "external-source",
-      appliedAt,
+      appliedAt: new Date().toISOString(),
       status: "Submitted",
       applicant: {
         fullName: fullName.trim(),
@@ -556,25 +577,57 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
       message: message.trim(),
     };
 
-    if (
-      !writeSubmittedApplication(application, [
-        submissionsStorageKey,
-        userStorageKey(
-          EMPLOYER_APPLICATION_INBOX_STORAGE_KEY,
-          application.recipientEmployerId,
-        ),
-      ])
-    ) {
-      setSubmissionStorageError(
-        "We could not save this application on your device. Check your browser storage settings, then try again.",
-      );
-      return;
+    let application = draftApplication;
+    if (import.meta.env.MODE !== "test") {
+      const formData = new FormData();
+      formData.set("jobId", job.id);
+      formData.set("fullName", fullName.trim());
+      formData.set("email", email.trim().toLowerCase());
+      formData.set("mobileNumber", mobile.trim());
+      formData.set("message", message.trim());
+      formData.set("resume", resumeFile);
+
+      try {
+        const result = await apiRequest<{
+          application: {
+            id: string;
+            status: "Submitted";
+            submittedAt: string;
+          };
+        }>("/applications", {
+          method: "POST",
+          body: formData,
+        });
+        application = {
+          ...draftApplication,
+          id: result.application.id,
+          appliedAt: result.application.submittedAt,
+          status: result.application.status,
+        };
+      } catch (error) {
+        setSubmissionStorageError(
+          error instanceof Error
+            ? error.message
+            : "JobFinder could not submit your application.",
+        );
+        setSubmitting(false);
+        return;
+      }
     }
+
+    writeSubmittedApplication(application, [
+      submissionsStorageKey,
+      userStorageKey(
+        EMPLOYER_APPLICATION_INBOX_STORAGE_KEY,
+        application.recipientEmployerId,
+      ),
+    ]);
 
     removeDraft(job.id, draftsStorageKey);
     setSubmittedApplication(application);
     setDraftStatus("");
     setSubmissionStorageError("");
+    setSubmitting(false);
   }
 
   if (submittedApplication) {
@@ -589,11 +642,11 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
         </span>
         <p className="kicker">Application submitted</p>
         <h2 id="application-confirmation-heading">
-          Your application was sent to {job.employerName}
+            Your Application Was Sent to {job.employerName}
         </h2>
         <p>
-          Your application is saved in this frontend prototype. You can now
-          track it in your application history.
+          Your application was saved by JobFinder. You can now track it in
+          your application history.
         </p>
         <dl className="application-confirmation__details">
           <div>
@@ -611,13 +664,13 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
         </dl>
         <div className="application-actions">
           <Link className="button button--primary" to="/applications">
-            View applications
+            View Applications
           </Link>
           <Link
             className="button button--secondary"
             to={`/jobs/${job.id}`}
           >
-            Back to job details
+            Back to Job Details
           </Link>
         </div>
       </section>
@@ -703,7 +756,7 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
             <div>
               <p className="kicker">Step 1 of 3</p>
               <h2 ref={stepHeadingRef} tabIndex={-1}>
-                Personal and contact details
+                    Personal and Contact Details
               </h2>
               <p>Only the employer receiving this application can see these details.</p>
             </div>
@@ -774,9 +827,7 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
               </label>
               <input
                 aria-describedby={
-                  errors.mobile
-                    ? "application-mobile-hint application-mobile-error"
-                    : "application-mobile-hint"
+                  errors.mobile ? "application-mobile-error" : undefined
                 }
                 aria-invalid={Boolean(errors.mobile)}
                 autoComplete="tel"
@@ -793,9 +844,6 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
                 type="tel"
                 value={mobile}
               />
-              <span className="field-hint" id="application-mobile-hint">
-                Use a Philippine mobile number.
-              </span>
               {errors.mobile ? (
                 <span className="field-error" id="application-mobile-error">
                   {errors.mobile}
@@ -805,9 +853,8 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
           </div>
 
           <div className="notice application-privacy-note">
-            <ShieldCheck size={20} aria-hidden="true" />
             <p>
-              Your contact information is shared only when you submit this
+              Your contact information is shared only when you send this
               application.
             </p>
           </div>
@@ -818,10 +865,10 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
               onClick={saveDraft}
               type="button"
             >
-              <Save size={18} aria-hidden="true" /> Save draft
+                    Save Draft
             </button>
             <button className="button button--primary" type="submit">
-              Continue to resume
+              Continue
             </button>
           </div>
         </form>
@@ -840,7 +887,7 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
             <div>
               <p className="kicker">Step 2 of 3</p>
               <h2 ref={stepHeadingRef} tabIndex={-1}>
-                Add your resume and message
+                  Add Your Resume and Message
               </h2>
               <p>Choose the resume that best supports this application.</p>
             </div>
@@ -866,10 +913,10 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
               </strong>
               {resumeFile
                 ? `${formatFileSize(resumeFile.size)} · Ready to attach`
-                : "PDF, DOC, or DOCX · 5 MB maximum"}
+                : "PDF · 5 MB maximum"}
             </span>
             <input
-              accept=".pdf,.doc,.docx"
+              accept=".pdf,application/pdf"
               aria-describedby={
                 errors.resume
                   ? "application-resume-hint application-resume-error"
@@ -939,10 +986,10 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
               onClick={saveDraft}
               type="button"
             >
-              <Save size={18} aria-hidden="true" /> Save draft
+                  <Save size={18} aria-hidden="true" /> Save Draft
             </button>
             <button className="button button--primary" type="submit">
-              Review application
+                  Review Application
             </button>
           </div>
         </form>
@@ -961,7 +1008,7 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
             <div>
               <p className="kicker">Step 3 of 3</p>
               <h2 ref={stepHeadingRef} tabIndex={-1}>
-                Review your application
+                Review Application
               </h2>
               <p>Check everything below before sending it to the employer.</p>
             </div>
@@ -973,7 +1020,7 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
               className="application-review__section"
             >
               <div className="application-review__header">
-                <h3 id="review-applicant-heading">Applicant information</h3>
+                  <h3 id="review-applicant-heading">Applicant Information</h3>
                 <button
                   className="button button--ghost"
                   onClick={() => goToStep(1)}
@@ -1003,7 +1050,7 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
               className="application-review__section"
             >
               <div className="application-review__header">
-                <h3 id="review-resume-heading">Resume and message</h3>
+                  <h3 id="review-resume-heading">Resume and Message</h3>
                 <button
                   className="button button--ghost"
                   onClick={() => goToStep(2)}
@@ -1032,7 +1079,7 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
               aria-labelledby="review-job-heading"
               className="application-review__section application-review__section--soft"
             >
-              <h3 id="review-job-heading">Applying for</h3>
+                  <h3 id="review-job-heading">Applying For</h3>
               <p>
                 <strong>{job.title}</strong>
                 <span>
@@ -1098,17 +1145,18 @@ function NativeApplicationFlow({ job }: { job: JobListing }) {
               onClick={saveDraft}
               type="button"
             >
-              <Save size={18} aria-hidden="true" /> Save draft
+                  <Save size={18} aria-hidden="true" /> Save Draft
             </button>
             <button
               aria-describedby={
                 !isOnline ? "application-offline-status" : undefined
               }
               className="button button--primary"
-              disabled={!isOnline}
+              disabled={!isOnline || submitting}
               type="submit"
             >
-              <Send size={18} aria-hidden="true" /> Submit application
+                  <Send size={18} aria-hidden="true" />{" "}
+                  {submitting ? "Submitting…" : "Submit Application"}
             </button>
           </div>
         </form>
@@ -1135,14 +1183,28 @@ const handoffIcons = {
 
 export function ApplicationPage() {
   const { jobId = "" } = useParams();
-  const job = getJobById(jobId);
+  const { getJob, isLoading, loadJob } = useJobs();
+  const job = getJob(jobId);
+
+  useEffect(() => {
+    if (!job && !isLoading && jobId) void loadJob(jobId);
+  }, [isLoading, job, jobId, loadJob]);
+
+  if (!job && isLoading) {
+    return (
+      <section className="status-state" aria-live="polite">
+        <h1>Loading Application</h1>
+        <p>Checking the latest job information.</p>
+      </section>
+    );
+  }
 
   if (!job) {
     return (
       <section className="empty-state">
-        <h1>Application unavailable</h1>
+          <h1>Application Unavailable</h1>
         <Link className="button button--primary" to="/jobs">
-          Browse jobs
+            Browse Jobs
         </Link>
       </section>
     );
@@ -1152,13 +1214,13 @@ export function ApplicationPage() {
     return (
       <section className="empty-state">
         <ArchiveX size={28} aria-hidden="true" />
-        <h1>This application has closed</h1>
+        <h1>This Application Has Closed</h1>
         <p>
           The deadline for {job.title} has passed. Browse current jobs to find
           another opportunity.
         </p>
         <Link className="button button--primary" to="/jobs">
-          Browse open jobs
+          Browse Open Jobs
         </Link>
       </section>
     );
@@ -1171,13 +1233,13 @@ export function ApplicationPage() {
   return (
     <div className="page page--narrow application-page">
       <Link className="back-link" to={`/jobs/${job.id}`}>
-        <ArrowLeft size={18} aria-hidden="true" /> Back to job details
+        <ArrowLeft size={18} aria-hidden="true" /> Back to Job Details
       </Link>
 
       <header className="page-header">
         <span className="eyebrow">
           <FileText size={16} aria-hidden="true" />
-          Protected application
+          Protected Application
         </span>
         <h1>Apply for {job.title}</h1>
         <p>
@@ -1197,14 +1259,14 @@ export function ApplicationPage() {
               </span>
             );
           })()}
-          <p className="kicker">Original application channel</p>
-          <h2>Continue by {applicationMethodLabel(method).toLowerCase()}</h2>
+          <p className="kicker">Original Application Channel</p>
+          <h2>Continue by {applicationMethodLabel(method)}</h2>
           <p>
             JobFinder keeps the method supplied by the original listing. It
             does not replace a PESO/LGU or employer application channel.
           </p>
           <div className="handoff-instructions">
-            <strong>Source instructions</strong>
+          <strong>Source Instructions</strong>
             <p>
               {job.source.applicationInstructions ??
                 "Confirm the current instructions with the source."}
@@ -1219,12 +1281,12 @@ export function ApplicationPage() {
                 `Application for ${job.title}`,
               )}`}
             >
-              <Mail size={18} aria-hidden="true" /> Open email application
+              <Mail size={18} aria-hidden="true" /> Open Email Application
             </a>
           ) : null}
           {targetIsSafe && method === "phone" && target ? (
             <a className="button button--primary" href={`tel:${target}`}>
-              <Phone size={18} aria-hidden="true" /> Call listed contact
+              <Phone size={18} aria-hidden="true" /> Call Listed Contact
             </a>
           ) : null}
           {targetIsSafe && method === "external-url" && target ? (
@@ -1235,7 +1297,7 @@ export function ApplicationPage() {
               target="_blank"
             >
               <ExternalLink size={18} aria-hidden="true" />
-              Continue to employer website
+              Continue to Employer Website
             </a>
           ) : null}
           {targetIsSafe && method === "in-person" ? (
@@ -1257,7 +1319,7 @@ export function ApplicationPage() {
 
           {job.source.alternateApplicationMethods?.length ? (
             <div className="alternate-methods">
-              <h3>Alternative in the source record</h3>
+            <h3>Alternative in the Source Record</h3>
               {job.source.alternateApplicationMethods.map((alternative) => (
                 <div key={`${alternative.method}-${alternative.target}`}>
                   <strong>
@@ -1272,7 +1334,10 @@ export function ApplicationPage() {
         </section>
       )}
 
-      <SourceProvenance source={job.source} compact />
+      <details className="technical-disclosure">
+          <summary>Job Source Details</summary>
+        <SourceProvenance source={job.source} compact />
+      </details>
     </div>
   );
 }

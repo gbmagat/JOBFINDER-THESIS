@@ -517,7 +517,7 @@ export function getJobById(id: string): JobListing | undefined {
 
 export function jobSourceLabel(source: JobSource): string {
   if (source.origin === "direct-employer") {
-    return "Posted directly by employer";
+    return "Posted by employer";
   }
 
   return `From ${source.organizationName} dataset`;

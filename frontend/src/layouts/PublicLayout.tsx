@@ -4,8 +4,6 @@ import {
   Building2,
   ClipboardList,
   Home,
-  LockKeyhole,
-  LogIn,
   LogOut,
   Search,
   UserRound,
@@ -17,7 +15,8 @@ import {
   useRef,
 } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
+import { SiteFooter } from "../components/SiteFooter";
 import { useAuth, type AuthUser } from "../features/auth/AuthContext";
 
 type NavigationItem = {
@@ -33,13 +32,13 @@ const jobSeekerNavigation: NavigationItem[] = [
   { to: "/", label: "Home", icon: Home, end: true },
   {
     to: "/jobs",
-    label: "Search jobs",
+    label: "Search Jobs",
     mobileLabel: "Search",
     icon: Search,
   },
   {
     to: "/saved",
-    label: "Saved jobs",
+    label: "Saved Jobs",
     mobileLabel: "Saved",
     icon: Bookmark,
     gated: true,
@@ -64,7 +63,7 @@ const employerNavigation: NavigationItem[] = [
   },
   {
     to: "/employer/posts",
-    label: "Job posts",
+    label: "Job Posts",
     mobileLabel: "Posts",
     icon: BriefcaseBusiness,
   },
@@ -82,27 +81,110 @@ const employerNavigation: NavigationItem[] = [
   },
   {
     to: "/jobs",
-    label: "Public jobs",
+    label: "Public Jobs",
     mobileLabel: "Jobs",
     icon: Search,
   },
 ];
 
-function topNavClass({ isActive }: { isActive: boolean }) {
+function topNavClass(isActive: boolean) {
   return `top-nav-link${isActive ? " is-active" : ""}`;
 }
 
-function railClass({ isActive }: { isActive: boolean }) {
+function railClass(isActive: boolean) {
   return `rail-link${isActive ? " is-active" : ""}`;
 }
 
-function mobileClass({ isActive }: { isActive: boolean }) {
+function mobileClass(isActive: boolean) {
   return `mobile-nav-link${isActive ? " is-active" : ""}`;
+}
+
+function isPublicJobRoute(pathname: string) {
+  return (
+    pathname === "/jobs" ||
+    /^\/jobs\/[^/]+(?:\/route)?\/?$/.test(pathname)
+  );
+}
+
+function isNavigationItemActive(
+  item: NavigationItem,
+  pathname: string,
+  role: AuthUser["role"],
+) {
+  if (item.to === "/") {
+    return pathname === "/";
+  }
+
+  if (item.to === "/jobs") {
+    return isPublicJobRoute(pathname);
+  }
+
+  if (role === "employer") {
+    if (item.to === "/employer") {
+      return pathname === "/employer";
+    }
+
+    if (item.to === "/employer/posts") {
+      return (
+        pathname === "/employer/posts" ||
+        pathname === "/employer/posts/new"
+      );
+    }
+
+    if (item.to === "/employer/candidates") {
+      return (
+        pathname === "/employer/candidates" ||
+        /^\/employer\/posts\/[^/]+\/candidates\/?$/.test(pathname)
+      );
+    }
+
+    return pathname === item.to;
+  }
+
+  if (item.to === "/applications") {
+    return (
+      pathname === "/applications" ||
+      /^\/jobs\/[^/]+\/apply\/?$/.test(pathname)
+    );
+  }
+
+  if (item.to === "/profile") {
+    return (
+      pathname === "/profile" ||
+      pathname === "/preferences" ||
+      pathname.startsWith("/onboarding/")
+    );
+  }
+
+  return pathname === item.to;
+}
+
+function getPageTitle(pathname: string) {
+  if (pathname === "/") return "Home";
+  if (pathname === "/jobs") return "Search Jobs";
+  if (pathname.endsWith("/route")) return "Route Preview";
+  if (pathname.endsWith("/apply")) return "Application";
+  if (pathname.startsWith("/jobs/")) return "Job Details";
+  if (pathname === "/saved") return "Saved Jobs";
+  if (pathname === "/applications") return "Applications";
+  if (pathname === "/profile") return "Profile";
+  if (pathname === "/preferences") return "Preferences";
+  if (pathname === "/onboarding/profile") return "Profile Setup";
+  if (pathname === "/onboarding/skills") return "Skills Setup";
+  if (pathname === "/about/data-sources") return "Data Sources";
+  if (pathname.startsWith("/employer/posts/") && pathname.endsWith("/candidates")) {
+    return "Candidate Matches";
+  }
+  if (pathname.startsWith("/employer/candidates")) return "Candidate Matches";
+  if (pathname.startsWith("/employer/company")) return "Company Profile";
+  if (pathname.startsWith("/employer/posts")) return "Job Posts";
+  if (pathname.startsWith("/employer")) return "Employer Overview";
+  return "Page Not Found";
 }
 
 function Brand({
   compact = false,
-  context = "Public job browser",
+  context = "Public Job Browser",
 }: {
   compact?: boolean;
   context?: string;
@@ -133,20 +215,22 @@ function Brand({
 function DesktopTopNavigation({
   isGuest,
   items,
+  pathname,
   user,
   onSignOut,
 }: {
   isGuest: boolean;
   items: NavigationItem[];
+  pathname: string;
   user: AuthUser | null;
   onSignOut(): void;
 }) {
   const context =
     user?.role === "employer"
-      ? "Employer workspace"
+      ? "Employer Workspace"
       : isGuest
-        ? "Public job browser"
-        : "Job seeker workspace";
+        ? "Public Job Browser"
+        : "Job Seeker Workspace";
 
   return (
     <header className="desktop-top-nav">
@@ -156,11 +240,16 @@ function DesktopTopNavigation({
         <nav className="top-nav-links" aria-label="Primary navigation">
           {items.map((item) => {
             const gatedForGuest = isGuest && item.gated;
+            const isActive = isNavigationItemActive(
+              item,
+              pathname,
+              user?.role ?? "job-seeker",
+            );
 
             return (
-              <NavLink
-                className={topNavClass}
-                end={item.end}
+              <Link
+                aria-current={isActive ? "page" : undefined}
+                className={topNavClass(isActive)}
                 key={item.to}
                 to={item.to}
                 aria-label={
@@ -170,10 +259,7 @@ function DesktopTopNavigation({
                 }
               >
                 <span>{item.label}</span>
-                {gatedForGuest ? (
-                  <LockKeyhole aria-hidden="true" />
-                ) : null}
-              </NavLink>
+              </Link>
             );
           })}
         </nav>
@@ -181,10 +267,9 @@ function DesktopTopNavigation({
         <div className="desktop-account">
           {isGuest ? (
             <>
-              <span className="desktop-account__status">Browsing as guest</span>
+              <span className="desktop-account__status">Browsing as Guest</span>
               <Link className="top-nav-auth" to="/sign-in">
-                <LogIn aria-hidden="true" />
-                Sign in
+                Sign In
               </Link>
             </>
           ) : (
@@ -193,8 +278,8 @@ function DesktopTopNavigation({
                 <span>{user?.displayName}</span>
                 <small>
                   {user?.role === "employer"
-                    ? "Employer team"
-                    : "Job seeker account"}
+                    ? "Employer Team"
+                    : "Job Seeker Account"}
                 </small>
               </span>
               <button
@@ -217,10 +302,12 @@ function DesktopTopNavigation({
 function TabletRail({
   isGuest,
   items,
+  pathname,
   user,
 }: {
   isGuest: boolean;
   items: NavigationItem[];
+  pathname: string;
   user: AuthUser | null;
 }) {
   return (
@@ -230,11 +317,16 @@ function TabletRail({
         {items.map((item) => {
           const Icon = item.icon;
           const gatedForGuest = isGuest && item.gated;
+          const isActive = isNavigationItemActive(
+            item,
+            pathname,
+            user?.role ?? "job-seeker",
+          );
 
           return (
-            <NavLink
-              className={railClass}
-              end={item.end}
+            <Link
+              aria-current={isActive ? "page" : undefined}
+              className={railClass(isActive)}
               key={item.to}
               title={
                 gatedForGuest ? `${item.label} · Sign in required` : item.label
@@ -248,10 +340,7 @@ function TabletRail({
             >
               <Icon aria-hidden="true" />
               <span>{item.mobileLabel ?? item.label}</span>
-              {gatedForGuest ? (
-                <LockKeyhole className="rail-lock" aria-hidden="true" />
-              ) : null}
-            </NavLink>
+            </Link>
           );
         })}
       </nav>
@@ -284,14 +373,20 @@ function TabletRail({
 function MobileChrome({
   isGuest,
   items,
+  pathname,
   user,
 }: {
   isGuest: boolean;
   items: NavigationItem[];
+  pathname: string;
   user: AuthUser | null;
 }) {
   const context =
-    user?.role === "employer" ? "Employer workspace" : "Job seeker workspace";
+    user?.role === "employer"
+      ? "Employer Workspace"
+      : isGuest
+        ? "Public Job Browser"
+        : "Job Seeker Workspace";
 
   return (
     <>
@@ -301,7 +396,7 @@ function MobileChrome({
           className="mobile-auth-link"
           to={isGuest ? "/sign-in" : user?.role === "employer" ? "/employer" : "/profile"}
         >
-          {isGuest ? "Sign in" : "Account"}
+          {isGuest ? "Sign In" : "Account"}
         </Link>
       </header>
 
@@ -313,12 +408,17 @@ function MobileChrome({
           {items.map((item) => {
             const Icon = item.icon;
             const gatedForGuest = isGuest && item.gated;
+            const isActive = isNavigationItemActive(
+              item,
+              pathname,
+              user?.role ?? "job-seeker",
+            );
 
             return (
               <li key={item.to}>
-                <NavLink
-                  className={mobileClass}
-                  end={item.end}
+                <Link
+                  aria-current={isActive ? "page" : undefined}
+                  className={mobileClass(isActive)}
                   to={item.to}
                   aria-label={
                     gatedForGuest
@@ -328,13 +428,7 @@ function MobileChrome({
                 >
                   <Icon aria-hidden="true" />
                   <span>{item.mobileLabel ?? item.label}</span>
-                  {gatedForGuest ? (
-                    <LockKeyhole
-                      className="mobile-lock-dot"
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </NavLink>
+                </Link>
               </li>
             );
           })}
@@ -353,39 +447,12 @@ export function PublicLayout() {
   const items =
     user?.role === "employer" ? employerNavigation : jobSeekerNavigation;
   const isFocusedFlow =
-    pathname.startsWith("/onboarding/") || pathname.endsWith("/apply");
-
+    pathname === "/sign-in" ||
+    pathname === "/register" ||
+    pathname.startsWith("/onboarding/") ||
+    pathname.endsWith("/apply");
   useEffect(() => {
-    const title =
-      pathname === "/"
-        ? "Home"
-        : pathname.startsWith("/jobs/") && pathname.endsWith("/route")
-          ? "Route preview"
-          : pathname.startsWith("/jobs/") && pathname.endsWith("/apply")
-            ? "Application"
-            : pathname.startsWith("/jobs/")
-              ? "Job details"
-              : pathname === "/jobs"
-                ? "Search jobs"
-                : pathname === "/saved"
-                  ? "Saved jobs"
-                  : pathname === "/applications"
-                    ? "Applications"
-                    : pathname === "/profile"
-                      ? "Profile"
-                      : pathname === "/preferences"
-                        ? "Preferences"
-                        : pathname.startsWith("/employer/candidates")
-                          ? "Candidate matches"
-                          : pathname.startsWith("/employer/company")
-                            ? "Company profile"
-                            : pathname.startsWith("/employer/posts")
-                              ? "Job posts"
-                              : pathname.startsWith("/employer")
-                                ? "Employer overview"
-                                : "JobFinder";
-
-    document.title = `${title} | JobFinder`;
+    document.title = `${getPageTitle(pathname)} | JobFinder`;
     window.scrollTo({ top: 0, behavior: "auto" });
 
     if (firstRoute.current) {
@@ -393,7 +460,9 @@ export function PublicLayout() {
       return;
     }
 
-    window.requestAnimationFrame(() => mainRef.current?.focus());
+    window.requestAnimationFrame(() =>
+      mainRef.current?.focus({ preventScroll: true }),
+    );
   }, [pathname]);
 
   return (
@@ -408,10 +477,21 @@ export function PublicLayout() {
         isGuest={isGuest}
         items={items}
         onSignOut={signOut}
+        pathname={pathname}
         user={user}
       />
-      <TabletRail isGuest={isGuest} items={items} user={user} />
-      <MobileChrome isGuest={isGuest} items={items} user={user} />
+      <TabletRail
+        isGuest={isGuest}
+        items={items}
+        pathname={pathname}
+        user={user}
+      />
+      <MobileChrome
+        isGuest={isGuest}
+        items={items}
+        pathname={pathname}
+        user={user}
+      />
 
       <main
         className="app-main"
@@ -423,6 +503,7 @@ export function PublicLayout() {
           <Outlet />
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

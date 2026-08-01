@@ -8,15 +8,18 @@ import {
   Navigation,
   WalletCards,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
-import { getJobById } from "../features/jobs/data";
+import { useJobs } from "../features/jobs/JobsContext";
+import type { RouteOption } from "../features/jobs/types";
 import {
   DEFAULT_PROFILE_DETAILS,
   PROFILE_DETAILS_KEY,
 } from "../features/profile/storage";
 import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
+import { apiRequest } from "../lib/api";
 
 const modeLabels = {
   walk: "Walking",
@@ -28,27 +31,73 @@ const modeLabels = {
 export function RoutePage() {
   const { user } = useAuth();
   const { jobId = "" } = useParams();
-  const job = getJobById(jobId);
+  const { getJob, isLoading, loadJob } = useJobs();
+  const job = getJob(jobId);
   const [profileDetails] = usePersistentState(
     userStorageKey(PROFILE_DETAILS_KEY, user?.id),
     DEFAULT_PROFILE_DETAILS,
   );
+  const [routeResult, setRouteResult] = useState<{
+    personalized: boolean;
+    route: RouteOption;
+    startingArea: string;
+  } | null>(null);
+  const [routeError, setRouteError] = useState("");
+
+  useEffect(() => {
+    if (!job && !isLoading && jobId) void loadJob(jobId);
+  }, [isLoading, job, jobId, loadJob]);
+
+  useEffect(() => {
+    if (!job || import.meta.env.MODE === "test") return;
+
+    let active = true;
+    setRouteResult(null);
+    setRouteError("");
+    apiRequest<{
+      personalized: boolean;
+      route: RouteOption;
+      startingArea: string;
+    }>(`/jobs/${encodeURIComponent(job.id)}/route`)
+      .then((result) => {
+        if (active) setRouteResult(result);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setRouteError(
+          error instanceof Error
+            ? error.message
+            : "JobFinder could not refresh this route.",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [job]);
 
   if (!job) {
     return (
-      <section className="empty-state">
-        <h1>Route unavailable</h1>
-        <Link className="button button--primary" to="/jobs">
-          Browse jobs
-        </Link>
-      </section>
+      <div className="page route-page">
+        <section className="empty-state">
+          <h1>Route Unavailable</h1>
+          <Link className="button button--primary" to="/jobs">
+            Browse Jobs
+          </Link>
+        </section>
+      </div>
     );
   }
+
+  const route = routeResult?.route ?? job.route;
+  const startingArea =
+    routeResult?.startingArea ||
+    `${profileDetails.barangay}, ${profileDetails.city}`;
 
   return (
     <div className="page route-page">
       <Link className="back-link" to={`/jobs/${job.id}`}>
-        <ArrowLeft size={18} aria-hidden="true" /> Back to job details
+        <ArrowLeft size={18} aria-hidden="true" /> Back to Job Details
       </Link>
 
       <header className="page-header">
@@ -56,21 +105,20 @@ export function RoutePage() {
           <Navigation size={16} aria-hidden="true" />
           Public route preview
         </span>
-        <h1>Shortest route to {job.title}</h1>
+        <h1>Shortest Route to {job.employerName}</h1>
         <p>
-          Saved home area: {profileDetails.barangay}, {profileDetails.city}.
-          Destination: {job.location.venue}. No sign in is required to view
-          this reference route.
+          Starting area used for this estimate: {startingArea}. Destination:{" "}
+          {job.location.venue}. No sign in is required to view this reference
+          route.
         </p>
       </header>
 
-      {profileDetails.barangay.trim().toLowerCase() !== "balibago" ? (
+      {routeError ? (
         <aside className="notice" role="status">
           <Info size={20} aria-hidden="true" />
           <p>
-            The figures below are the listing&apos;s reference estimate and
-            have not been recalculated from {profileDetails.barangay}. A live
-            routing service will replace them after backend integration.
+            {routeError} The listing&apos;s saved reference estimate is shown
+            below.
           </p>
         </aside>
       ) : null}
@@ -82,12 +130,12 @@ export function RoutePage() {
               <div>
                 <p className="kicker">Estimated route</p>
                 <h2 id="route-map-title">
-                  {job.route.distanceKm.toFixed(1)} km ·{" "}
-                  {job.route.estimatedMinutes} minutes
+                  {route.distanceKm.toFixed(1)} km ·{" "}
+                  {route.estimatedMinutes} minutes
                 </h2>
               </div>
               <span className="source-pill">
-                {modeLabels[job.route.mode]}
+                {modeLabels[route.mode]}
               </span>
             </div>
             <div className="route-map-visual" aria-hidden="true">
@@ -102,8 +150,8 @@ export function RoutePage() {
               </span>
             </div>
             <div className="route-text-alternative">
-              <strong>Route in words</strong>
-              <p>{job.route.textSummary}</p>
+              <strong>Route in Words</strong>
+              <p>{route.textSummary}</p>
             </div>
           </section>
 
@@ -111,7 +159,7 @@ export function RoutePage() {
             <p className="kicker">Step-by-step</p>
             <h2 id="directions-title">Directions</h2>
             <ol className="route-steps">
-              {job.route.steps.map((step) => (
+              {route.steps.map((step) => (
                 <li key={step.order}>
                   <span className="route-steps__number">{step.order}</span>
                   <span>
@@ -136,37 +184,37 @@ export function RoutePage() {
 
         <aside className="route-sidebar">
           <section className="content-card">
-            <h2>Route summary</h2>
+            <h2>Travel Summary</h2>
             <dl className="route-summary-list">
               <div>
                 <dt>
                   <MapPin size={18} aria-hidden="true" /> Distance
                 </dt>
-                <dd>{job.route.distanceKm.toFixed(1)} km</dd>
+                <dd>{route.distanceKm.toFixed(1)} km</dd>
               </div>
               <div>
                 <dt>
                   <Clock3 size={18} aria-hidden="true" /> Travel time
                 </dt>
-                <dd>{job.route.estimatedMinutes} min</dd>
+                <dd>{route.estimatedMinutes} min</dd>
               </div>
               <div>
                 <dt>
-                  {job.route.mode === "walk" ? (
+                  {route.mode === "walk" ? (
                     <Footprints size={18} aria-hidden="true" />
                   ) : (
                     <Bus size={18} aria-hidden="true" />
                   )}
                   Mode
                 </dt>
-                <dd>{modeLabels[job.route.mode]}</dd>
+                <dd>{modeLabels[route.mode]}</dd>
               </div>
-              {job.route.estimatedFarePhp ? (
+              {route.estimatedFarePhp ? (
                 <div>
                   <dt>
                     <WalletCards size={18} aria-hidden="true" /> Est. fare
                   </dt>
-                  <dd>₱{job.route.estimatedFarePhp}</dd>
+                  <dd>₱{route.estimatedFarePhp}</dd>
                 </div>
               ) : null}
             </dl>
@@ -184,7 +232,7 @@ export function RoutePage() {
             className="button button--primary button--block"
             to={`/jobs/${job.id}`}
           >
-            Return to job
+            Return to Job
           </Link>
         </aside>
       </div>

@@ -118,7 +118,7 @@ export function MatchBreakdown({
           />
           <EvidenceGroup
             heading="Related"
-            description="Transferable skills connected through the ontology."
+            description="Related skills that can transfer to this job."
             evidence={match.relatedSkills}
             modifier="related"
           />

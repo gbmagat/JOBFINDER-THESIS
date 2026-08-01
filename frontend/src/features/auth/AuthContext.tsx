@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { StorageLike } from "./auth-intent";
+import { apiRequest } from "../../lib/api";
 
 export const AUTH_USER_STORAGE_KEY = "jobfinder.auth-user.v1";
 
@@ -30,7 +31,9 @@ export interface SignInInput {
 export interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
+  isReady: boolean;
   signIn(input: SignInInput): Promise<AuthUser>;
+  register(input: Required<SignInInput>): Promise<AuthUser>;
   signOut(): void;
 }
 
@@ -134,13 +137,47 @@ function createMockUser(input: SignInInput): AuthUser {
 
 export function AuthProvider({ children, storage }: AuthProviderProps) {
   const activeStorage = useMemo(() => resolveStorage(storage), [storage]);
+  const usesMockAuth = storage !== undefined || import.meta.env.MODE === "test";
   const [user, setUser] = useState<AuthUser | null>(() =>
     readUser(activeStorage),
   );
+  const [isReady, setIsReady] = useState(usesMockAuth);
 
   useEffect(() => {
     setUser(readUser(activeStorage));
   }, [activeStorage]);
+
+  useEffect(() => {
+    if (usesMockAuth) {
+      setIsReady(true);
+      return;
+    }
+
+    let active = true;
+    apiRequest<{ user: AuthUser | null }>("/auth/me")
+      .then(({ user: currentUser }) => {
+        if (!active) return;
+        setUser(currentUser);
+        if (activeStorage) {
+          if (currentUser) {
+            activeStorage.setItem(
+              AUTH_USER_STORAGE_KEY,
+              JSON.stringify(currentUser),
+            );
+          } else {
+            activeStorage.removeItem(AUTH_USER_STORAGE_KEY);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setIsReady(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeStorage, usesMockAuth]);
 
   useEffect(() => {
     if (
@@ -163,7 +200,28 @@ export function AuthProvider({ children, storage }: AuthProviderProps) {
 
   const signIn = useCallback(
     async (input: SignInInput) => {
-      const nextUser = createMockUser(input);
+      const nextUser = usesMockAuth
+        ? createMockUser(input)
+        : (
+            await apiRequest<{ user: AuthUser }>("/auth/login", {
+              method: "POST",
+              body: JSON.stringify({
+                email: input.email,
+                password: input.password,
+              }),
+            })
+          ).user;
+
+      if (input.role && nextUser.role !== input.role) {
+        if (!usesMockAuth) {
+          void apiRequest<null>("/auth/logout", { method: "POST" }).catch(
+            () => {},
+          );
+        }
+        throw new Error(
+          `This email belongs to a ${nextUser.role === "employer" ? "Employer" : "Job Seeker"} account.`,
+        );
+      }
 
       if (activeStorage) {
         try {
@@ -177,10 +235,33 @@ export function AuthProvider({ children, storage }: AuthProviderProps) {
       setUser(nextUser);
       return nextUser;
     },
-    [activeStorage],
+    [activeStorage, usesMockAuth],
+  );
+
+  const register = useCallback(
+    async (input: Required<SignInInput>) => {
+      const nextUser = usesMockAuth
+        ? createMockUser(input)
+        : (
+            await apiRequest<{ user: AuthUser }>("/auth/register", {
+              method: "POST",
+              body: JSON.stringify(input),
+            })
+          ).user;
+
+      if (activeStorage) {
+        activeStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(nextUser));
+      }
+      setUser(nextUser);
+      return nextUser;
+    },
+    [activeStorage, usesMockAuth],
   );
 
   const signOut = useCallback(() => {
+    if (!usesMockAuth) {
+      void apiRequest<null>("/auth/logout", { method: "POST" }).catch(() => {});
+    }
     if (activeStorage) {
       try {
         activeStorage.removeItem(AUTH_USER_STORAGE_KEY);
@@ -188,16 +269,18 @@ export function AuthProvider({ children, storage }: AuthProviderProps) {
     }
 
     setUser(null);
-  }, [activeStorage]);
+  }, [activeStorage, usesMockAuth]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       isAuthenticated: user !== null,
+      isReady,
       signIn,
+      register,
       signOut,
     }),
-    [signIn, signOut, user],
+    [isReady, register, signIn, signOut, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

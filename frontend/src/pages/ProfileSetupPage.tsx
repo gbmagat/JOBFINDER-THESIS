@@ -1,5 +1,6 @@
 import {
   FormEvent,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -25,6 +26,7 @@ import {
 } from "../features/profile/storage";
 import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
+import { apiRequest } from "../lib/api";
 
 type ProfileField =
   | "fullName"
@@ -42,6 +44,17 @@ const profileFieldIds: Record<ProfileField, string> = {
   maximumDistance: "profile-maximum-distance",
   maximumMinutes: "profile-maximum-minutes",
 };
+
+function homeNodeIdForBarangay(barangay: string) {
+  const normalized = barangay.trim().toLowerCase();
+  if (normalized.includes("rosario") || normalized.includes("nepo")) {
+    return "nepo-center";
+  }
+  if (normalized.includes("maragul") || normalized.includes("marquee")) {
+    return "marquee";
+  }
+  return "balibago";
+}
 
 export function ProfileSetupPage() {
   const [searchParams] = useSearchParams();
@@ -68,6 +81,8 @@ export function ProfileSetupPage() {
   const [errors, setErrors] = useState<
     Partial<Record<ProfileField, string>>
   >({});
+  const [serverError, setServerError] = useState("");
+  const [saving, setSaving] = useState(false);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const {
     barangay,
@@ -77,6 +92,39 @@ export function ProfileSetupPage() {
     maximumMinutes,
     mobileNumber,
   } = profile;
+
+  useEffect(() => {
+    if (import.meta.env.MODE === "test") return;
+
+    let active = true;
+    apiRequest<{
+      profile: {
+        fullName: string;
+        mobileNumber: string;
+        barangay: string;
+        city: string;
+        maximumDistanceKm: number;
+        maximumMinutes: number;
+      };
+    }>("/profile")
+      .then(({ profile: savedProfile }) => {
+        if (!active) return;
+        setProfile({
+          fullName: savedProfile.fullName,
+          mobileNumber: savedProfile.mobileNumber,
+          barangay: savedProfile.barangay,
+          city: savedProfile.city,
+          maximumDistance: String(savedProfile.maximumDistanceKm),
+          maximumMinutes: String(savedProfile.maximumMinutes),
+        });
+        setCommuteMinutes(String(savedProfile.maximumMinutes));
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [setCommuteMinutes, setProfile, user?.id]);
 
   function updateProfile(
     field: keyof typeof profile,
@@ -90,8 +138,9 @@ export function ProfileSetupPage() {
     });
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setServerError("");
     const normalizedMobile = mobileNumber.replace(/[\s()-]/g, "");
     const nextErrors: Partial<Record<ProfileField, string>> = {
       ...(fullName.trim().length < 2
@@ -122,8 +171,34 @@ export function ProfileSetupPage() {
       return;
     }
 
-    setCommuteMinutes(maximumMinutes);
-    navigate(`/onboarding/skills?${skillsSearch.toString()}`);
+    setSaving(true);
+    try {
+      await apiRequest("/profile", {
+        method: "PUT",
+        body: JSON.stringify({
+          fullName,
+          mobileNumber: normalizedMobile,
+          barangay,
+          city,
+          maximumDistanceKm: Number(maximumDistance),
+          maximumMinutes: Number(maximumMinutes),
+          homeNodeId: homeNodeIdForBarangay(barangay),
+          preferredWorkTypes: [],
+        }),
+      });
+      setCommuteMinutes(maximumMinutes);
+      window.dispatchEvent(new Event("jobfinder:profile-updated"));
+      navigate(`/onboarding/skills?${skillsSearch.toString()}`);
+    } catch (error) {
+      setServerError(
+        error instanceof Error
+          ? error.message
+          : "JobFinder could not save your profile.",
+      );
+      window.requestAnimationFrame(() => errorSummaryRef.current?.focus());
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -138,7 +213,7 @@ export function ProfileSetupPage() {
             <ArrowLeft size={18} aria-hidden="true" />
           </Link>
           <div className="onboarding-topbar__copy">
-            <strong>Profile setup</strong>
+            <strong>Profile Setup</strong>
             <span>1 of 2</span>
           </div>
           <div
@@ -155,19 +230,19 @@ export function ProfileSetupPage() {
         </header>
 
         <div className="onboarding-intro">
-          <h1>Tell us about you</h1>
+          <h1>Tell Us About You</h1>
           <p>We&apos;ll use this to personalize local opportunities.</p>
         </div>
 
         <form className="onboarding-form" noValidate onSubmit={handleSubmit}>
-          {Object.keys(errors).length ? (
+          {Object.keys(errors).length || serverError ? (
             <div
               className="form-error-summary"
               ref={errorSummaryRef}
               role="alert"
               tabIndex={-1}
             >
-              <h2>Check your profile details</h2>
+              <h2>Check Your Profile Details</h2>
               <ul>
                 {(Object.entries(errors) as [ProfileField, string][]).map(
                   ([field, message]) => (
@@ -176,6 +251,7 @@ export function ProfileSetupPage() {
                     </li>
                   ),
                 )}
+                {serverError ? <li>{serverError}</li> : null}
               </ul>
             </div>
           ) : null}
@@ -189,7 +265,7 @@ export function ProfileSetupPage() {
               </span>
               <div>
                 <p className="kicker">Step 1</p>
-                <h2 id="basic-information-heading">Basic information</h2>
+                <h2 id="basic-information-heading">Basic Information</h2>
               </div>
             </div>
 
@@ -265,8 +341,8 @@ export function ProfileSetupPage() {
                 <MapPin size={21} aria-hidden="true" />
               </span>
               <div>
-                <p className="kicker">Commute starting point</p>
-                <h2 id="home-location-heading">Home location</h2>
+                <p className="kicker">Commute Starting Point</p>
+                <h2 id="home-location-heading">Home Location</h2>
               </div>
             </div>
 
@@ -337,7 +413,7 @@ export function ProfileSetupPage() {
                 <Navigation size={21} aria-hidden="true" />
               </span>
               <div>
-                <h2 id="commute-preference-heading">Commute preference</h2>
+                <h2 id="commute-preference-heading">Commute Preference</h2>
                 <p className="onboarding-card__caption">
                   Set the travel limits used in your recommendations.
                 </p>
@@ -418,9 +494,10 @@ export function ProfileSetupPage() {
           <div className="onboarding-actions">
             <button
               className="button button--primary button--block"
+              disabled={saving}
               type="submit"
             >
-              Continue to skills
+              {saving ? "Saving Profile…" : "Continue to Skills"}
             </button>
           </div>
         </form>

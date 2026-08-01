@@ -1,17 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArchiveX,
   ArrowLeft,
-  Bookmark,
-  BriefcaseBusiness,
   Building2,
-  CalendarDays,
   CheckCircle2,
-  Clock3,
-  GraduationCap,
-  MapPin,
+  ChevronDown,
   Navigation,
-  WalletCards,
 } from "lucide-react";
 import {
   Link,
@@ -21,16 +15,21 @@ import {
 } from "react-router-dom";
 import { SignInDialog } from "../features/auth/SignInDialog";
 import { useAuth } from "../features/auth/AuthContext";
-import { getJobById } from "../features/jobs/data";
+import { useJobs } from "../features/jobs/JobsContext";
 import { MatchBreakdown } from "../features/jobs/MatchBreakdown";
 import {
   DEFAULT_SAVED_JOB_IDS,
   SAVED_JOB_IDS_KEY,
 } from "../features/jobs/saved-jobs";
 import { SourceProvenance } from "../features/jobs/SourceProvenance";
+import type {
+  JobSource,
+  MatchExplanation,
+} from "../features/jobs/types";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
+import { apiRequest } from "../lib/api";
 
 const currency = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -38,10 +37,90 @@ const currency = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 0,
 });
 
+function MatchSummary({
+  compact = false,
+  match,
+}: {
+  compact?: boolean;
+  match: MatchExplanation;
+}) {
+  return (
+    <section className="content-card">
+      <div className="card-heading-row">
+        <span className="icon-tile icon-tile--soft">
+          <CheckCircle2 size={22} aria-hidden="true" />
+        </span>
+        <div>
+          <p className="kicker">Why this job matches</p>
+          <h2>{match.overallScore}% Overall Match</h2>
+        </div>
+      </div>
+      <p>{match.summary}</p>
+      <details className="candidate-evidence button--block">
+        <summary>
+          <span>See Match Details</span>
+          <ChevronDown aria-hidden="true" />
+        </summary>
+        <div className="surface__body">
+          <MatchBreakdown compact={compact} match={match} />
+        </div>
+      </details>
+    </section>
+  );
+}
+
+function SourceSummary({
+  compact = false,
+  source,
+}: {
+  compact?: boolean;
+  source: JobSource;
+}) {
+  const isImported = source.origin === "peso-lgu-dataset";
+
+  return (
+    <section className="content-card">
+      <div className="card-heading-row">
+        <span className="icon-tile icon-tile--soft">
+          <Building2 size={22} aria-hidden="true" />
+        </span>
+        <div>
+          <p className="kicker">Job source</p>
+          <h2>
+            {isImported
+              ? `From ${source.organizationName}`
+              : `Posted by ${source.organizationName}`}
+          </h2>
+        </div>
+      </div>
+      <p>
+        {isImported
+          ? "This listing came from a PESO/LGU dataset. Confirm that the vacancy and application instructions are still current."
+          : "The employer submitted this listing directly to JobFinder. Review the source details before sharing personal information."}
+      </p>
+      <details className="candidate-evidence button--block">
+        <summary>
+          <span>See Source and Application Details</span>
+          <ChevronDown aria-hidden="true" />
+        </summary>
+        <div className="surface__body">
+          <SourceProvenance compact={compact} source={source} />
+        </div>
+      </details>
+    </section>
+  );
+}
+
 export function JobDetailPage() {
   const { jobId = "" } = useParams();
   const [searchParams] = useSearchParams();
-  const job = getJobById(jobId);
+  const {
+    getJob,
+    hasPersonalizedMatches,
+    isLoading,
+    loadJob,
+  } = useJobs();
+  const job = getJob(jobId);
   const navigate = useNavigate();
   const { user } = useAuth();
   const isOnline = useOnlineStatus();
@@ -52,20 +131,51 @@ export function JobDetailPage() {
   );
   const isJobSeeker = user?.role === "job-seeker";
   const isEmployer = user?.role === "employer";
-  const saved = job ? savedJobIds.includes(job.id) : false;
+  const canShowPersonalizedMatch =
+    isJobSeeker && hasPersonalizedMatches;
+  const saved =
+    isJobSeeker && job ? savedJobIds.includes(job.id) : false;
   const isExpired =
     searchParams.get("state") === "expired" ||
     Boolean(
       job?.closingAt && Date.parse(job.closingAt) < Date.now(),
     );
 
+  useEffect(() => {
+    if (!isJobSeeker || import.meta.env.MODE === "test") return;
+
+    let active = true;
+    apiRequest<{ jobs: { id: string }[] }>("/saved-jobs")
+      .then(({ jobs }) => {
+        if (active) setSavedJobIds(jobs.map((savedJob) => savedJob.id));
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [isJobSeeker, setSavedJobIds, user?.id]);
+
+  useEffect(() => {
+    if (!job && !isLoading && jobId) void loadJob(jobId);
+  }, [isLoading, job, jobId, loadJob]);
+
+  if (!job && isLoading) {
+    return (
+      <section className="status-state" aria-live="polite">
+        <h1>Loading Job Details</h1>
+        <p>Checking the latest listing information.</p>
+      </section>
+    );
+  }
+
   if (!job) {
     return (
       <section className="empty-state">
-        <h1>This job is no longer available</h1>
+        <h1>This Job Is No Longer Available</h1>
         <p>Browse the latest public listings to find another opportunity.</p>
         <Link className="button button--primary" to="/jobs">
-          Back to search
+          Back to Job Results
         </Link>
       </section>
     );
@@ -75,38 +185,49 @@ export function JobDetailPage() {
     return (
       <div className="page job-detail-page">
         <Link className="back-link" to="/jobs">
-          <ArrowLeft size={18} aria-hidden="true" /> Back to search
+          <ArrowLeft size={18} aria-hidden="true" /> Back to Job Results
         </Link>
         <section className="status-state status-state--expired" role="status">
           <ArchiveX size={32} aria-hidden="true" />
           <p className="kicker">Listing snapshot</p>
-          <h1>This job is no longer accepting applications</h1>
+          <h1>Applications Are Closed</h1>
           <p>
-            {job.title} at {job.employerName} has expired or was removed. Its
-            previous match explanation remains available for transparency.
+            {job.title} at {job.employerName} is no longer open.
+            {canShowPersonalizedMatch
+              ? " Your saved match details remain available below."
+              : " Sign in to compare skills on other open jobs."}
           </p>
           <div className="cluster">
             <Link className="button button--primary" to="/jobs">
-              Find similar open jobs
+              View Similar Jobs
             </Link>
             <Link
               className="button button--secondary"
               to={`/jobs?q=${encodeURIComponent(job.title)}`}
             >
-              Search this role
+              Search This Role
             </Link>
           </div>
         </section>
-        <MatchBreakdown compact match={job.fit} />
-        <SourceProvenance compact source={job.source} />
+        {canShowPersonalizedMatch ? <MatchSummary compact match={job.fit} /> : null}
+        <SourceSummary compact source={job.source} />
       </div>
     );
   }
 
   const sourceText =
     job.source.origin === "direct-employer"
-      ? "Direct employer post"
+      ? "Posted by employer"
       : `${job.source.organizationType.toUpperCase()} dataset`;
+  const sourceUpdatedText = new Intl.DateTimeFormat("en-PH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(
+    new Date(job.source.publishedAt ?? job.postedAt),
+  );
+  const displayedResponsibilities = job.requirements.responsibilities.slice(0, 3);
+  const displayedSkills = job.requirements.requiredSkills.slice(0, 3);
 
   function handleApply() {
     if (!isOnline) {
@@ -123,7 +244,7 @@ export function JobDetailPage() {
     setSignInOpen(true);
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!user) {
       navigate(
         `/sign-in?${new URLSearchParams({
@@ -135,139 +256,105 @@ export function JobDetailPage() {
     if (!isJobSeeker) {
       return;
     }
+
+    const wasSaved = saved;
     setSavedJobIds((current) =>
       current.includes(job!.id)
         ? current.filter((id) => id !== job!.id)
         : [...current, job!.id],
     );
+
+    if (import.meta.env.MODE === "test") return;
+
+    try {
+      await apiRequest(`/saved-jobs/${job!.id}`, {
+        method: wasSaved ? "DELETE" : "POST",
+      });
+    } catch {
+      setSavedJobIds((current) =>
+        wasSaved
+          ? current.includes(job!.id)
+            ? current
+            : [...current, job!.id]
+          : current.filter((id) => id !== job!.id),
+      );
+    }
   }
 
   return (
     <div className="page job-detail-page">
       <Link className="back-link" to="/jobs">
-        <ArrowLeft size={18} aria-hidden="true" /> Back to search
+        <ArrowLeft size={18} aria-hidden="true" /> Back to Job Results
       </Link>
-
-      <header className="job-hero">
-        <div className="job-hero__main">
-          <div className="job-hero__topline">
-            <span className="source-pill">{sourceText}</span>
-            <span className="match-badge">{job.fit.overallScore}% match</span>
-          </div>
-          <h1>{job.title}</h1>
-          <p className="job-hero__employer">
-            {job.employerName} · {job.location.barangay},{" "}
-            {job.location.city}
-          </p>
-          <div className="job-fact-row">
-            <span>
-              <BriefcaseBusiness size={17} aria-hidden="true" />
-              {job.employmentType} · {job.workArrangement}
-            </span>
-            <span>
-              <WalletCards size={17} aria-hidden="true" />
-              {currency.format(job.salary.minimumPhp)}–
-              {currency.format(job.salary.maximumPhp)} / {job.salary.period}
-            </span>
-            <span>
-              <CalendarDays size={17} aria-hidden="true" />
-              Posted{" "}
-              {new Intl.DateTimeFormat("en-PH", {
-                month: "short",
-                day: "numeric",
-              }).format(new Date(job.postedAt))}
-            </span>
-          </div>
-        </div>
-        <button
-          aria-pressed={saved}
-          className="button button--secondary"
-          disabled={isEmployer}
-          onClick={handleSave}
-          type="button"
-        >
-          <Bookmark
-            fill={saved ? "currentColor" : "none"}
-            size={18}
-            aria-hidden="true"
-          />
-          {saved
-            ? "Saved"
-            : isEmployer
-              ? "Job seeker feature"
-              : isJobSeeker
-                ? "Save job"
-                : "Save · Sign in"}
-        </button>
-      </header>
 
       <div className="job-detail-layout">
         <div className="job-detail-main">
-          <MatchBreakdown match={job.fit} />
-
-          <section className="content-card route-summary-card">
-            <div className="card-heading-row">
-              <span className="icon-tile icon-tile--soft">
-                <Navigation size={22} aria-hidden="true" />
-              </span>
-              <div>
-                <p className="kicker">Shortest route to work</p>
-                <h2>
-                  {job.route.distanceKm.toFixed(1)} km · Estimated{" "}
-                  {job.route.estimatedMinutes} min
-                </h2>
+          <header className="job-hero">
+            <div className="job-hero__main">
+              <p className="kicker">{sourceText}</p>
+              <h1>{job.title}</h1>
+              <p className="job-hero__employer">
+                {job.employerName} · {job.location.barangay},{" "}
+                {job.location.city}
+              </p>
+              <div className="job-fact-row">
+                <span>{job.employmentType}</span>
+                <span>{job.workArrangement}</span>
+                <span>
+                  {currency.format(job.salary.minimumPhp)}–
+                  {currency.format(job.salary.maximumPhp)}
+                </span>
+                <span>{job.route.estimatedMinutes} min estimated travel</span>
               </div>
             </div>
-            <p>{job.route.textSummary}</p>
-            <div className="route-stats">
-              <span>
-                <Clock3 size={17} aria-hidden="true" />
-                {job.route.estimatedMinutes} minutes
-              </span>
-              <span>
-                <MapPin size={17} aria-hidden="true" />
-                {job.location.venue}
-              </span>
-            </div>
-            <Link className="button button--secondary" to="route">
-              View route details
-            </Link>
-          </section>
+          </header>
 
-          <section className="content-card" aria-labelledby="about-role-heading">
-            <p className="kicker">About the role</p>
-            <h2 id="about-role-heading">{job.title}</h2>
-            <p>{job.description}</p>
+          <Link
+            aria-label={`View the estimated ${job.route.estimatedMinutes}-minute travel route`}
+            className="button button--secondary job-route-action"
+            to="route"
+          >
+            <Navigation size={18} aria-hidden="true" />
+            View Travel Details
+          </Link>
 
-            <h3>What you will do</h3>
-            <ul className="detail-list">
-              {job.requirements.responsibilities.map((item) => (
-                <li key={item}>
-                  <CheckCircle2 size={18} aria-hidden="true" />
-                  <span>{item}</span>
-                </li>
+          {canShowPersonalizedMatch ? (
+            <section className="job-match-overview">
+              <p className="kicker">Why this job matches</p>
+              <h2>{job.fit.overallScore}% Overall Match</h2>
+              <div className="job-match-metrics">
+                <div>
+                  <span>Skill match</span>
+                  <strong>{job.fit.skillScore}%</strong>
+                </div>
+                <div>
+                  <span>Estimated travel</span>
+                  <strong>{job.route.estimatedMinutes} min</strong>
+                </div>
+              </div>
+              <p>See the simple reasons below before deciding.</p>
+            </section>
+          ) : null}
+
+          <section
+            className="job-detail-section"
+            aria-labelledby="responsibilities-heading"
+          >
+            <h2 id="responsibilities-heading">What You Will Do</h2>
+            <ul>
+              {displayedResponsibilities.map((item) => (
+                <li key={item}>{item}</li>
               ))}
             </ul>
+          </section>
 
-            <h3>Role requirements</h3>
-            <div className="requirement-grid">
-              <div>
-                <GraduationCap size={20} aria-hidden="true" />
-                <span>
-                  <strong>Education</strong>
-                  {job.requirements.education}
-                </span>
-              </div>
-              <div>
-                <BriefcaseBusiness size={20} aria-hidden="true" />
-                <span>
-                  <strong>Experience</strong>
-                  {job.requirements.experience}
-                </span>
-              </div>
-            </div>
+          <section
+            className="job-detail-section"
+            aria-labelledby="skills-heading"
+          >
+            <h2 id="skills-heading">Skills the Employer Is Looking For</h2>
             <div className="chip-row">
-              {job.requirements.requiredSkills.map((skill) => (
+              {displayedSkills.map((skill) => (
                 <span className="chip" key={skill}>
                   {skill}
                 </span>
@@ -275,46 +362,32 @@ export function JobDetailPage() {
             </div>
           </section>
 
-          <SourceProvenance source={job.source} />
-
-          <section className="content-card employer-card">
-            <span className="icon-tile icon-tile--soft">
-              <Building2 size={22} aria-hidden="true" />
-            </span>
-            <div>
-              <p className="kicker">Employer</p>
-              <h2>{job.employerName}</h2>
-              <p>
-                This overview is attached to the listing source. Review the
-                source details above before sharing personal information.
-              </p>
-            </div>
+          <section className="job-source-simple">
+            <strong>Job source</strong>
+            <p>
+              {job.source.origin === "direct-employer"
+                ? `Posted directly by ${job.source.organizationName.replace(
+                    " Solutions",
+                    "",
+                  )}`
+                : `Provided by ${job.source.organizationName}`}{" "}
+              · Updated {sourceUpdatedText}
+            </p>
           </section>
         </div>
 
         <aside className="apply-panel">
           <div className="apply-panel__card">
-            <p className="kicker">Ready to apply?</p>
-            <h2>
-              {isEmployer
-                ? "Previewing this public job as an employer."
-                : "Browse freely. Sign in only to submit."}
-            </h2>
-            <div className="apply-route">
-              <Navigation size={19} aria-hidden="true" />
-              <span>
-                <strong>{job.route.estimatedMinutes} min commute</strong>
-                {job.route.distanceKm.toFixed(1)} km to{" "}
-                {job.location.barangay}
-              </span>
-            </div>
-            <div className="access-note">
-              <CheckCircle2 size={19} aria-hidden="true" />
-              <span>
-                <strong>Application access</strong>
-                Sign in is required only at this step. We&apos;ll return you to
-                this job and continue the correct application method.
-              </span>
+            <h2>Ready to Apply?</h2>
+            <div className="apply-panel__intro">
+              <p>You can keep browsing without an account.</p>
+              <p>
+                {isEmployer
+                  ? "Use a job seeker account when you want to apply."
+                  : isJobSeeker
+                    ? "Your account is ready when you want to apply."
+                    : "Sign in only when you want to apply."}
+              </p>
             </div>
             {!isOnline ? (
               <div className="notice notice--warning" role="status">
@@ -331,23 +404,80 @@ export function JobDetailPage() {
               type="button"
             >
               {isEmployer
-                ? "Job seeker account required"
-                : `Apply now${isJobSeeker ? "" : " · Sign in required"}`}
+                ? "Job Seeker Account Required"
+                : isJobSeeker
+                  ? "Apply Now"
+                  : "Sign In to Apply"}
             </button>
-            <Link className="button button--secondary button--block" to="route">
-              View public route
-            </Link>
-            <p className="apply-panel__footnote">
-              Browsing stays public. Application submission is protected.
-            </p>
+            <button
+              aria-pressed={saved}
+              className="button button--secondary button--block"
+              disabled={isEmployer}
+              onClick={handleSave}
+              type="button"
+            >
+              {saved
+                ? "Saved"
+                : isEmployer
+                  ? "Job Seeker Feature"
+                  : "Save for Later"}
+            </button>
+            <div className="apply-panel__next">
+              <h3>What Happens Next</h3>
+              <ol>
+                <li>Sign in or create an account.</li>
+                <li>Add your resume and message.</li>
+                <li>Review before you send.</li>
+              </ol>
+            </div>
           </div>
+          <section className="match-help-card">
+            <h3>
+              {canShowPersonalizedMatch
+                ? "Need Help Understanding the Score?"
+                : isJobSeeker
+                  ? "Add Skills to Compare This Job"
+                  : isEmployer
+                    ? "Match Information Is for Job Seekers"
+                    : "Want to Compare This Job with Your Skills?"}
+            </h3>
+            {canShowPersonalizedMatch ? (
+              <>
+                <p>Skills count for 70%.</p>
+                <p>Travel distance counts for 30%.</p>
+                <p>The score never makes a hiring decision.</p>
+              </>
+            ) : isJobSeeker ? (
+              <>
+                <p>Add your own skills before JobFinder compares this job.</p>
+                <p>You can still read the requirements and apply now.</p>
+                <Link className="text-link" to="/onboarding/skills">
+                  Add Skills
+                </Link>
+              </>
+            ) : isEmployer ? (
+              <>
+                <p>Use a job seeker account with saved skills to compare jobs.</p>
+                <p>The public job details remain available here.</p>
+              </>
+            ) : (
+              <>
+                <p>Sign in and add your skills first.</p>
+                <p>You can still read public job details now.</p>
+              </>
+            )}
+          </section>
         </aside>
       </div>
 
       <div className="mobile-apply-bar">
         <div>
-          <strong>{job.fit.overallScore}% match</strong>
-          <span>{job.route.estimatedMinutes} min commute</span>
+          <strong>
+            {canShowPersonalizedMatch
+              ? `${job.fit.overallScore}% match`
+              : job.employmentType}
+          </strong>
+          <span>{job.route.estimatedMinutes} min estimated travel</span>
         </div>
         <button
           className="button button--primary"
@@ -356,10 +486,14 @@ export function JobDetailPage() {
           type="button"
         >
           {isEmployer
-            ? "Job seeker only"
-            : isOnline
-              ? "Apply now"
-              : "Reconnect to apply"}
+            ? "Job Seeker Only"
+            : isJobSeeker
+              ? isOnline
+                ? "Apply Now"
+                : "Reconnect to Apply"
+              : isOnline
+                ? "Sign In to Apply"
+                : "Reconnect to Apply"}
         </button>
       </div>
 

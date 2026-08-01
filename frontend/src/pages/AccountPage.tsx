@@ -1,6 +1,7 @@
 import {
   type FormEvent,
   type ReactNode,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -10,13 +11,10 @@ import {
   BriefcaseBusiness,
   Check,
   Clock3,
-  Mail,
   MapPin,
-  Phone,
   Plus,
   Search,
   Settings2,
-  ShieldCheck,
   UserRound,
   X,
   type LucideIcon,
@@ -32,8 +30,9 @@ import {
   readApplicationReviewStatuses,
   toApplicantApplicationStatus,
 } from "../features/applications/submitted-storage";
-import { getAllJobs, JOBS } from "../features/jobs/data";
 import { JobCard } from "../features/jobs/JobCard";
+import { useJobs } from "../features/jobs/JobsContext";
+import type { JobListing } from "../features/jobs/types";
 import {
   DEFAULT_SAVED_JOB_IDS,
   SAVED_JOB_IDS_KEY,
@@ -48,6 +47,7 @@ import {
 } from "../features/profile/storage";
 import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
+import { apiRequest } from "../lib/api";
 
 type ApplicationStatus = ApplicantApplicationStatus;
 
@@ -58,30 +58,6 @@ interface AccountHeaderProps {
   icon: LucideIcon;
   title: string;
 }
-
-interface ApplicationSeed {
-  appliedAt: string;
-  jobId: string;
-  status: ApplicationStatus;
-}
-
-const applicationSeeds = [
-  {
-    jobId: "it-support-assistant-lumina-tech",
-    appliedAt: "2026-07-18",
-    status: "Under review",
-  },
-  {
-    jobId: "customer-service-associate-clarkconnect",
-    appliedAt: "2026-07-15",
-    status: "Shortlisted",
-  },
-  {
-    jobId: "junior-web-developer-pixelnorth",
-    appliedAt: "2026-07-12",
-    status: "Submitted",
-  },
-] as const satisfies readonly ApplicationSeed[];
 
 type AccountApplication = {
   appliedAt: string;
@@ -94,28 +70,17 @@ type AccountApplication = {
   title: string;
 };
 
-const seededApplications: AccountApplication[] = applicationSeeds.flatMap((seed) => {
-  const job = JOBS.find((candidate) => candidate.id === seed.jobId);
-  return job
-    ? [
-        {
-          appliedAt: seed.appliedAt,
-          employerName: job.employerName,
-          id: `seed-${seed.jobId}`,
-          jobId: seed.jobId,
-          location: job.location.barangay,
-          nextAction:
-            seed.status === "Shortlisted"
-              ? "Prepare for employer contact"
-              : seed.status === "Under review"
-                ? "Keep your contact details current"
-                : "Wait for employer review",
-          status: seed.status,
-          title: job.title,
-        },
-      ]
-    : [];
-});
+type ApiProfile = {
+  fullName: string;
+  mobileNumber: string;
+  barangay: string;
+  city: string;
+  maximumDistanceKm: number;
+  maximumMinutes: number;
+  homeNodeId: string;
+  preferredWorkTypes: string[];
+  skills: { name: string }[];
+};
 
 const workTypeOptions = [
   "Full-time",
@@ -124,8 +89,6 @@ const workTypeOptions = [
   "Remote",
 ] as const;
 const APPLICATION_NOTES_STORAGE_KEY = "jobfinder.application-notes.v1";
-const PROFILE_DISCOVERABILITY_STORAGE_KEY =
-  "jobfinder.profile-discoverability.v1";
 
 function AccountHeader({
   actions,
@@ -151,12 +114,32 @@ function AccountHeader({
 
 function SavedJobsView({ displayName }: { displayName: string }) {
   const { user } = useAuth();
-  const allJobs = useMemo(() => getAllJobs(), []);
-  const [savedJobIds] = usePersistentState<string[]>(
+  const { jobs: allJobs } = useJobs();
+  const [savedJobIds, setSavedJobIds] = usePersistentState<string[]>(
     userStorageKey(SAVED_JOB_IDS_KEY, user?.id),
     DEFAULT_SAVED_JOB_IDS,
   );
-  const savedJobs = useMemo(
+  const [serverSavedJobs, setServerSavedJobs] = useState<JobListing[] | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!user || import.meta.env.MODE === "test") return;
+
+    let active = true;
+    apiRequest<{ jobs: JobListing[] }>("/saved-jobs")
+      .then(({ jobs }) => {
+        if (!active) return;
+        setSavedJobIds(jobs.map((job) => job.id));
+        setServerSavedJobs(jobs);
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [setSavedJobIds, user]);
+  const locallyResolvedJobs = useMemo(
     () =>
       savedJobIds.flatMap((jobId) => {
         const job = allJobs.find((candidate) => candidate.id === jobId);
@@ -164,6 +147,7 @@ function SavedJobsView({ displayName }: { displayName: string }) {
       }),
     [allJobs, savedJobIds],
   );
+  const savedJobs = serverSavedJobs ?? locallyResolvedJobs;
 
   return (
     <>
@@ -176,7 +160,7 @@ function SavedJobsView({ displayName }: { displayName: string }) {
         description={`Revisit opportunities saved by ${displayName}.`}
         eyebrow="Private workspace"
         icon={Bookmark}
-        title="Saved jobs"
+        title="Saved Jobs"
       />
 
       {savedJobs.length ? (
@@ -190,10 +174,10 @@ function SavedJobsView({ displayName }: { displayName: string }) {
           <span className="empty-state__icon">
             <Bookmark size={26} aria-hidden="true" />
           </span>
-          <h2>No saved jobs yet</h2>
+          <h2>No Saved Jobs Yet</h2>
           <p>Save an opportunity while browsing and it will appear here.</p>
           <Link className="button button--primary" to="/jobs">
-            Browse jobs
+            Browse Jobs
           </Link>
         </section>
       )}
@@ -236,11 +220,14 @@ function ApplicationsView() {
     userStorageKey(SUBMITTED_APPLICATIONS_STORAGE_KEY, user?.id),
     [],
   );
+  const [serverApplications, setServerApplications] = useState<
+    AccountApplication[] | null
+  >(null);
   const reviewStatuses = useMemo(
     () => readApplicationReviewStatuses(user?.id),
     [user?.id],
   );
-  const applications = useMemo<AccountApplication[]>(() => {
+  const storedApplications = useMemo<AccountApplication[]>(() => {
     const submitted = submittedApplications.flatMap((application) => {
       if (
         !application ||
@@ -277,20 +264,54 @@ function ApplicationsView() {
         },
       ];
     });
-    const submittedJobIds = new Set(
-      submitted.map((application) => application.jobId),
-    );
-
-    return [
-      ...submitted,
-      ...seededApplications.filter(
-        (application) => !submittedJobIds.has(application.jobId),
-      ),
-    ].sort(
+    return submitted.sort(
       (first, second) =>
         Date.parse(second.appliedAt) - Date.parse(first.appliedAt),
     );
   }, [reviewStatuses, submittedApplications]);
+
+  useEffect(() => {
+    if (!user || import.meta.env.MODE === "test") return;
+
+    let active = true;
+    setServerApplications(null);
+    apiRequest<{
+      applications: {
+        id: string;
+        jobId: string;
+        jobTitle: string;
+        employerName: string;
+        location?: { barangay?: string; city?: string };
+        status: ApplicationStatus;
+        submittedAt: string;
+      }[];
+    }>("/applications")
+      .then(({ applications }) => {
+        if (!active) return;
+        setServerApplications(
+          applications.map((application) => ({
+            appliedAt: application.submittedAt,
+            employerName: application.employerName,
+            id: application.id,
+            jobId: application.jobId,
+            location:
+              [application.location?.barangay, application.location?.city]
+                .filter(Boolean)
+                .join(", ") || "Angeles City",
+            nextAction: nextActionForStatus(application.status),
+            status: application.status,
+            title: application.jobTitle,
+          })),
+        );
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  const applications = serverApplications ?? storedApplications;
 
   const filteredApplications = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -408,7 +429,7 @@ function ApplicationsView() {
       >
         <header className="surface__header">
           <div>
-            <h2 id="application-history-heading">Application history</h2>
+            <h2 id="application-history-heading">Application History</h2>
             <p className="text-sm muted">
               Employers control review and hiring decisions.
             </p>
@@ -498,8 +519,21 @@ function ApplicationsView() {
             <span className="empty-state__icon">
               <Search size={24} aria-hidden="true" />
             </span>
-            <h2>No applications found</h2>
-            <p>Try searching by role, employer, location, or status.</p>
+            <h2>
+              {applications.length
+                ? "No Applications Found"
+                : "No Applications Yet"}
+            </h2>
+            <p>
+              {applications.length
+                ? "Try searching by role, employer, location, or status."
+                : "Applications you submit will appear here."}
+            </p>
+            {!applications.length ? (
+              <Link className="button button--primary" to="/jobs">
+                Browse Local Jobs
+              </Link>
+            ) : null}
           </div>
         )}
 
@@ -574,18 +608,38 @@ function ProfileView({
   email: string;
 }) {
   const { user } = useAuth();
-  const [profileDetails] = usePersistentState(
+  const [profileDetails, setProfileDetails] = usePersistentState(
     userStorageKey(PROFILE_DETAILS_KEY, user?.id),
     DEFAULT_PROFILE_DETAILS,
   );
-  const [profileSkills] = usePersistentState<string[]>(
+  const [profileSkills, setProfileSkills] = usePersistentState<string[]>(
     userStorageKey(PROFILE_SKILLS_KEY, user?.id),
     DEFAULT_PROFILE_SKILLS,
   );
-  const [isDiscoverable, setIsDiscoverable] = usePersistentState(
-    userStorageKey(PROFILE_DISCOVERABILITY_STORAGE_KEY, user?.id),
-    false,
-  );
+
+  useEffect(() => {
+    if (!user || import.meta.env.MODE === "test") return;
+
+    let active = true;
+    apiRequest<{ profile: ApiProfile }>("/profile")
+      .then(({ profile }) => {
+        if (!active) return;
+        setProfileDetails({
+          fullName: profile.fullName,
+          mobileNumber: profile.mobileNumber,
+          barangay: profile.barangay,
+          city: profile.city,
+          maximumDistance: String(profile.maximumDistanceKm),
+          maximumMinutes: String(profile.maximumMinutes),
+        });
+        setProfileSkills(profile.skills.map((skill) => skill.name));
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [setProfileDetails, setProfileSkills, user]);
   const readinessChecks = [
     Boolean(displayName.trim()),
     Boolean(profileDetails.mobileNumber.trim()),
@@ -604,96 +658,61 @@ function ProfileView({
             className="button button--secondary"
             to="/onboarding/profile?returnTo=/profile"
           >
-            Edit personal details
+          Edit Personal Details
           </Link>
         }
-        description="Review the information used for applications and matching."
-        eyebrow="Private workspace"
+        description="Review what employers can see and improve your job matches."
+        eyebrow="Private profile"
         icon={UserRound}
-        title="Your profile"
+        title="Your Profile"
       />
 
-      <div className="split-layout">
-        <div className="stack stack--3">
-          <section className="surface" aria-labelledby="personal-heading">
-            <header className="surface__header">
-              <div>
-                <h2 id="personal-heading">Personal information</h2>
-                <p className="text-sm muted">
-                  Shared only with employers you apply to.
-                </p>
-              </div>
-              <UserRound size={20} aria-hidden="true" />
-            </header>
-            <div className="surface__body">
-              <dl className="definition-list">
-                <div className="definition-row">
-                  <dt>Full name</dt>
-                  <dd>{displayName}</dd>
-                </div>
-                <div className="definition-row">
-                  <dt>Email</dt>
-                  <dd>
-                    <a className="text-link" href={`mailto:${email}`}>
-                      <Mail size={15} aria-hidden="true" /> {email}
-                    </a>
-                  </dd>
-                </div>
-                <div className="definition-row">
-                  <dt>Mobile</dt>
-                  <dd>
-                    <span className="cluster">
-                      <Phone size={15} aria-hidden="true" />{" "}
-                      {profileDetails.mobileNumber || "Not added"}
-                    </span>
-                  </dd>
-                </div>
-              </dl>
+      <div className="profile-overview-grid">
+        <section className="surface profile-overview-card" aria-labelledby="personal-heading">
+          <header className="surface__header">
+            <div>
+              <h2 id="personal-heading">Personal Information</h2>
+              <p className="text-sm muted">
+                Shared only with employers you apply to.
+              </p>
             </div>
-            <footer className="surface__footer">
-              <Link
-                className="text-link"
-                to="/onboarding/profile?returnTo=/profile"
-              >
-                Update personal information{" "}
-                <ArrowRight size={15} aria-hidden="true" />
-              </Link>
-            </footer>
-          </section>
-
-          <section className="surface" aria-labelledby="location-heading">
-            <header className="surface__header">
-              <div>
-                <h2 id="location-heading">Home location</h2>
-                <p className="text-sm muted">
-                  Used to estimate distance and travel time.
-                </p>
+          </header>
+          <div className="surface__body">
+            <dl className="definition-list">
+              <div className="definition-row">
+                <dt>Full name</dt>
+                <dd>{profileDetails.fullName || displayName}</dd>
               </div>
-              <MapPin size={20} aria-hidden="true" />
-            </header>
-            <div className="surface__body">
-              <dl className="definition-list">
-                <div className="definition-row">
-                  <dt>Home area</dt>
-                  <dd>
-                    {profileDetails.barangay}, {profileDetails.city}
-                  </dd>
-                </div>
-                <div className="definition-row">
-                  <dt>Commute limit</dt>
-                  <dd>{profileDetails.maximumMinutes} minutes</dd>
-                </div>
-              </dl>
-            </div>
-          </section>
-        </div>
+              <div className="definition-row">
+                <dt>Email</dt>
+                <dd>
+                  <a className="text-link" href={`mailto:${email}`}>
+                    {email}
+                  </a>
+                </dd>
+              </div>
+              <div className="definition-row">
+                <dt>Mobile</dt>
+                <dd>{profileDetails.mobileNumber || "Not added"}</dd>
+              </div>
+            </dl>
+          </div>
+          <footer className="surface__footer">
+            <Link
+              className="text-link"
+              to="/onboarding/profile?returnTo=/profile"
+            >
+              Update Personal Information
+            </Link>
+          </footer>
+        </section>
 
-        <section className="surface" aria-labelledby="skills-heading">
+        <section className="surface profile-overview-card" aria-labelledby="skills-heading">
           <header className="surface__header">
             <div>
               <h2 id="skills-heading">Skills</h2>
               <p className="text-sm muted">
-                Exact and related skills improve your recommendations.
+                Add skills using words you know.
               </p>
             </div>
             <span className="quiet-badge">{profileSkills.length} added</span>
@@ -701,83 +720,99 @@ function ProfileView({
           <div className="surface__body">
             <div className="chip-row" aria-label="Profile skills">
               {profileSkills.map((skill) => (
-                <span className="chip is-active" key={skill}>
+                <span className="chip" key={skill}>
                   {skill}
                 </span>
               ))}
             </div>
-            <p className="section-copy text-sm">
-              JobFinder uses your profile skills as evidence for semantic skill
-              matching. You can review every match reason before applying.
-            </p>
+            <div className="stack stack--1 profile-skills-note">
+              <p className="text-sm muted">
+                Related skills can also help find suitable jobs.
+              </p>
+              <p className="text-sm muted">
+                You can review every reason before applying.
+              </p>
+            </div>
           </div>
           <footer className="surface__footer cluster">
             <Link
               className="button button--primary"
               to="/onboarding/skills?returnTo=/profile"
             >
-              Edit skills
+              Add Skill
             </Link>
             <Link className="button button--secondary" to="/preferences">
-              Match preferences
+              Match Preferences
             </Link>
           </footer>
         </section>
+
+        <section className="surface profile-overview-card" aria-labelledby="location-heading">
+          <header className="surface__header">
+            <h2 id="location-heading">Home Area and Travel</h2>
+          </header>
+          <div className="surface__body">
+            <dl className="definition-list">
+              <div className="definition-row">
+                <dt>Home area</dt>
+                <dd>
+                  {profileDetails.barangay}, {profileDetails.city}
+                </dd>
+              </div>
+              <div className="definition-row">
+                <dt>Travel limit</dt>
+                <dd>{profileDetails.maximumMinutes} minutes</dd>
+              </div>
+            </dl>
+          </div>
+          <footer className="surface__footer">
+            <Link
+              className="button button--secondary"
+              to="/onboarding/profile?returnTo=/profile"
+            >
+              Change Travel Limit
+            </Link>
+          </footer>
+        </section>
+
+        <section
+          className="surface profile-overview-card profile-privacy-card"
+          aria-labelledby="profile-privacy-heading"
+        >
+          <header className="surface__header">
+            <h2 id="profile-privacy-heading">Your Privacy</h2>
+          </header>
+          <div className="surface__body">
+            <ul className="profile-privacy__list">
+              <li>Contact details are shared only after you apply.</li>
+              <li>Employers see travel evidence, not your exact home point.</li>
+            </ul>
+            <p className="profile-privacy__confirmation">
+              ✓ Profile is private by default
+            </p>
+          </div>
+        </section>
       </div>
 
-      <section className="surface profile-privacy" aria-labelledby="profile-privacy-heading">
-        <header className="surface__header">
-          <div>
-            <p className="kicker">Readiness and privacy</p>
-            <h2 id="profile-privacy-heading">Control how your profile is used</h2>
+      <section className="surface profile-readiness" aria-labelledby="profile-readiness-heading">
+        <div className="profile-readiness__row">
+          <h2 id="profile-readiness-heading">Profile Readiness</h2>
+          <div
+            aria-label={`Profile readiness ${readiness}%`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={readiness}
+            className="progress-track"
+            role="progressbar"
+          >
+            <span
+              className="progress-value"
+              style={{ width: `${readiness}%` }}
+            />
           </div>
           <span className="quiet-badge">{readiness}% ready</span>
-        </header>
-        <div className="surface__body profile-privacy__layout">
-          <div>
-            <div
-              aria-label={`Profile readiness ${readiness}%`}
-              aria-valuemax={100}
-              aria-valuemin={0}
-              aria-valuenow={readiness}
-              className="progress-track"
-              role="progressbar"
-            >
-              <span
-                className="progress-value"
-                style={{ width: `${readiness}%` }}
-              />
-            </div>
-            <ul className="profile-privacy__list">
-              <li>
-                <ShieldCheck size={17} aria-hidden="true" />
-                Contact details are shared only with employers you apply to.
-              </li>
-              <li>
-                <ShieldCheck size={17} aria-hidden="true" />
-                Employers see commute evidence, never your precise home point.
-              </li>
-              <li>
-                <ShieldCheck size={17} aria-hidden="true" />
-                Every recommendation shows the skills that influenced it.
-              </li>
-            </ul>
-          </div>
-          <label className="check-field profile-discoverability">
-            <input
-              checked={isDiscoverable}
-              onChange={(event) => setIsDiscoverable(event.target.checked)}
-              type="checkbox"
-            />
-            <span>
-              <strong>Allow profile discovery</strong>
-              <small>
-                Let verified direct employers find this skills profile even
-                before you apply. This stays off by default.
-              </small>
-            </span>
-          </label>
         </div>
+        <p>Add your mobile number to make applications easier.</p>
       </section>
     </>
   );
@@ -799,6 +834,29 @@ function PreferencesView() {
   );
   const [skillDraft, setSkillDraft] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [apiProfile, setApiProfile] = useState<ApiProfile | null>(null);
+
+  useEffect(() => {
+    if (!user || import.meta.env.MODE === "test") return;
+
+    let active = true;
+    apiRequest<{ profile: ApiProfile }>("/profile")
+      .then(({ profile }) => {
+        if (!active) return;
+        setApiProfile(profile);
+        setCommuteMinutes(String(profile.maximumMinutes));
+        setSelectedWorkTypes(profile.preferredWorkTypes);
+        setSkills(profile.skills.map((skill) => skill.name));
+      })
+      .catch(() => {
+        if (active) setSaveError("JobFinder could not load your preferences.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [setCommuteMinutes, setSelectedWorkTypes, setSkills, user]);
 
   function toggleWorkType(workType: string) {
     setSelectedWorkTypes((current) => {
@@ -832,9 +890,49 @@ function PreferencesView() {
     setSaved(false);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSaved(true);
+    if (import.meta.env.MODE === "test") {
+      setSaved(true);
+      return;
+    }
+    if (!apiProfile) {
+      setSaveError("JobFinder could not save your preferences yet.");
+      return;
+    }
+
+    setSaved(false);
+    setSaveError("");
+    try {
+      const [{ profile }] = await Promise.all([
+        apiRequest<{ profile: ApiProfile }>("/profile", {
+          method: "PUT",
+          body: JSON.stringify({
+            fullName: apiProfile.fullName,
+            mobileNumber: apiProfile.mobileNumber,
+            barangay: apiProfile.barangay,
+            city: apiProfile.city,
+            maximumDistanceKm: apiProfile.maximumDistanceKm,
+            maximumMinutes: Number(commuteMinutes),
+            homeNodeId: apiProfile.homeNodeId,
+            preferredWorkTypes: selectedWorkTypes,
+          }),
+        }),
+        apiRequest<{ profile: ApiProfile }>("/profile/skills", {
+          method: "PUT",
+          body: JSON.stringify({ skills }),
+        }),
+      ]);
+      setApiProfile(profile);
+      setSaved(true);
+      window.dispatchEvent(new Event("jobfinder:profile-updated"));
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "JobFinder could not save your preferences.",
+      );
+    }
   }
 
   return (
@@ -843,14 +941,14 @@ function PreferencesView() {
         description="Control the commute, work types, and skills used to rank jobs."
         eyebrow="Private workspace"
         icon={Settings2}
-        title="Match preferences"
+        title="Match Preferences"
       />
 
       <form className="form" onSubmit={handleSubmit}>
         <section className="surface" aria-labelledby="travel-heading">
           <header className="surface__header">
             <div>
-              <h2 id="travel-heading">Travel and work setup</h2>
+              <h2 id="travel-heading">Travel and Work Setup</h2>
               <p className="text-sm muted">
                 These choices filter and rank recommendations.
               </p>
@@ -899,7 +997,7 @@ function PreferencesView() {
         <section className="surface" aria-labelledby="preference-skills-heading">
           <header className="surface__header">
             <div>
-              <h2 id="preference-skills-heading">Skills to prioritize</h2>
+              <h2 id="preference-skills-heading">Skills to Prioritize</h2>
               <p className="text-sm muted">
                 Add skills you want JobFinder to emphasize in recommendations.
               </p>
@@ -934,7 +1032,7 @@ function PreferencesView() {
                 type="button"
               >
                 <Plus size={17} aria-hidden="true" />
-                Add skill
+                Add Skill
               </button>
             </div>
 
@@ -969,9 +1067,10 @@ function PreferencesView() {
           {saved ? (
             <p className="alert alert--success">
               <Check size={18} aria-hidden="true" />
-              Preferences saved for this frontend session.
+              Preferences saved.
             </p>
           ) : null}
+          {saveError ? <p className="alert alert--danger">{saveError}</p> : null}
         </div>
       </form>
     </>

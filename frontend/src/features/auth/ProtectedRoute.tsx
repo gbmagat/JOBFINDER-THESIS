@@ -19,9 +19,20 @@ export function ProtectedRoute({
   redirectTo = "/sign-in",
   unauthorizedTo = "/jobs",
 }: ProtectedRouteProps) {
-  const { user } = useAuth();
+  const { isReady, user } = useAuth();
   const location = useLocation();
   const content = children === undefined ? <Outlet /> : children;
+
+  if (!isReady) {
+    return (
+      <main className="route-loading-state" aria-live="polite">
+        <span className="route-loading-state__mark" aria-hidden="true">
+          JF
+        </span>
+        <p>Checking Your Account…</p>
+      </main>
+    );
+  }
 
   if (!user) {
     const employerAccess =

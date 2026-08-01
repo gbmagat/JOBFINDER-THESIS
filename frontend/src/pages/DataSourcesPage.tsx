@@ -15,7 +15,7 @@ export function DataSourcesPage() {
           <Database size={16} aria-hidden="true" />
           Data transparency
         </span>
-        <h1>Where job listings come from</h1>
+      <h1>Where Job Listings Come From</h1>
         <p>
           JobFinder combines direct employer posts with opportunity datasets
           provided by PESO and LGU offices. Every imported listing keeps its
@@ -28,7 +28,7 @@ export function DataSourcesPage() {
           <span className="icon-tile">
             <Building2 size={22} aria-hidden="true" />
           </span>
-          <h2>Direct employer posts</h2>
+          <h2>Direct Employer Posts</h2>
           <p>
             Employers create and maintain these listings in JobFinder. A direct
             post can use JobFinder&apos;s native application form.
@@ -38,7 +38,7 @@ export function DataSourcesPage() {
           <span className="icon-tile icon-tile--soft">
             <Database size={22} aria-hidden="true" />
           </span>
-          <h2>PESO/LGU datasets</h2>
+          <h2>PESO/LGU Datasets</h2>
           <p>
             PESO and LGU organizations provide datasets; they do not have an
             approval queue or user workspace in JobFinder. Imported records
@@ -48,7 +48,7 @@ export function DataSourcesPage() {
       </section>
 
       <section className="stack-section" aria-labelledby="shown-heading">
-        <h2 id="shown-heading">What each sourced listing shows</h2>
+          <h2 id="shown-heading">What Each Sourced Listing Shows</h2>
         <div className="check-list">
           <div>
             <ShieldCheck size={20} aria-hidden="true" />

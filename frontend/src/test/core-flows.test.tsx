@@ -326,7 +326,7 @@ describe("employer application inbox", () => {
 
     await user.click(
       within(candidateCard as HTMLElement).getByRole("button", {
-        name: "View application",
+        name: "View Application",
       }),
     );
 

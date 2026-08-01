@@ -4,20 +4,16 @@ import {
   Bell,
   BookmarkPlus,
   Filter,
-  List,
   LoaderCircle,
   LocateFixed,
-  Map,
   MapPin,
-  RotateCcw,
   Search,
-  SlidersHorizontal,
   Trash2,
   WifiOff,
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
-import { getAllJobs } from "../features/jobs/data";
+import { useJobs } from "../features/jobs/JobsContext";
 import { JobCard } from "../features/jobs/JobCard";
 import {
   COMMUTE_MINUTES_KEY,
@@ -27,7 +23,6 @@ import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
 
-type ResultView = "list" | "map";
 type SortOption = "match" | "skill" | "commute" | "newest";
 type LocationStatus =
   | "idle"
@@ -49,7 +44,7 @@ type SavedSearch = {
   workTypes: string[];
 };
 
-const workTypes = ["Full-time", "Part-time", "Hybrid", "Remote"] as const;
+const workTypes = ["Full-time", "Part-time", "Work from home"] as const;
 const transportModes = [
   ["", "Any transport"],
   ["walk", "Walking"],
@@ -66,7 +61,15 @@ const SAVED_SEARCHES_KEY = "jobfinder.saved-searches.v1";
 
 export function JobsPage() {
   const { user } = useAuth();
-  const allJobs = useMemo(() => getAllJobs(), []);
+  const {
+    error: jobsError,
+    hasPersonalizedMatches,
+    isLoading: jobsLoading,
+    jobs: allJobs,
+    refreshJobs,
+  } = useJobs();
+  const canShowPersonalizedMatch =
+    user?.role === "job-seeker" && hasPersonalizedMatches;
   const [searchParams, setSearchParams] = useSearchParams();
   const isOnline = useOnlineStatus();
   const activeQuery = searchParams.get("q") ?? "";
@@ -101,15 +104,18 @@ export function JobsPage() {
   );
   const [savedSearchStatus, setSavedSearchStatus] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("match");
-  const [view, setView] = useState<ResultView>("list");
+  const visibleSortBy: SortOption = canShowPersonalizedMatch
+    ? sortBy
+    : sortBy === "commute" || sortBy === "newest"
+      ? sortBy
+      : "newest";
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [initialLoading, setInitialLoading] = useState(true);
   const [locationStatus, setLocationStatus] =
     useState<LocationStatus>("idle");
   const [browserLocationReady, setBrowserLocationReady] = useState(false);
-  const isLoading = initialLoading || previewState === "loading";
-  const hasServiceError = previewState === "error";
+  const isLoading = jobsLoading || previewState === "loading";
+  const hasServiceError = Boolean(jobsError) || previewState === "error";
   const isOffline = !isOnline || previewState === "offline";
   const isUnauthorized = previewState === "unauthorized";
   const barangayOptions = useMemo(
@@ -128,11 +134,6 @@ export function JobsPage() {
       ].sort((a, b) => a.localeCompare(b)),
     [allJobs],
   );
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setInitialLoading(false), 280);
-    return () => window.clearTimeout(timeout);
-  }, []);
 
   const results = useMemo(() => {
     const query = activeQuery.trim().toLowerCase();
@@ -161,7 +162,9 @@ export function JobsPage() {
         !selectedWorkTypes.length ||
         selectedWorkTypes.some(
           (type) =>
-            job.employmentType === type || job.workArrangement === type,
+            job.employmentType === type ||
+            job.workArrangement ===
+              (type === "Work from home" ? "Remote" : type),
         );
       const matchesTransport =
         !transportMode || job.route.mode === transportMode;
@@ -182,7 +185,7 @@ export function JobsPage() {
     });
 
     return filtered.sort((first, second) => {
-      switch (sortBy) {
+      switch (visibleSortBy) {
         case "skill":
           return second.fit.skillScore - first.fit.skillScore;
         case "commute":
@@ -207,8 +210,8 @@ export function JobsPage() {
     minimumPay,
     schedule,
     selectedWorkTypes,
-    sortBy,
     transportMode,
+    visibleSortBy,
   ]);
 
   const selectedJob =
@@ -252,6 +255,11 @@ export function JobsPage() {
     const next = new URLSearchParams(searchParams);
     next.delete("state");
     setSearchParams(next);
+  }
+
+  function retryJobs() {
+    clearPreviewState();
+    void refreshJobs();
   }
 
   function clearQuery() {
@@ -360,8 +368,8 @@ export function JobsPage() {
           <MapPin size={16} aria-hidden="true" />
           Opportunities near Angeles City
         </span>
-        <h1>Search local jobs</h1>
-        <p>Filter by skill, work type, pay, and travel limit.</p>
+        <h1>Search Local Jobs</h1>
+        <p>Start with the basics. More filters are available only when needed.</p>
 
         <form className="search-bar search-bar--wide" onSubmit={handleSearch}>
           <Search size={20} aria-hidden="true" />
@@ -390,22 +398,22 @@ export function JobsPage() {
             <Filter size={18} aria-hidden="true" />
             Filters
           </button>
-          <div className="segmented-control" aria-label="Result view">
-            <button
-              aria-pressed={view === "list"}
-              onClick={() => setView("list")}
-              type="button"
+          <label className="sort-field mobile-sort-field">
+            <span className="sr-only">Sort jobs</span>
+            <select
+              aria-label="Sort jobs"
+              onChange={(event) =>
+                setSortBy(event.target.value as SortOption)
+              }
+              value={visibleSortBy}
             >
-              <List size={18} aria-hidden="true" /> List
-            </button>
-            <button
-              aria-pressed={view === "map"}
-              onClick={() => setView("map")}
-              type="button"
-            >
-              <Map size={18} aria-hidden="true" /> Map
-            </button>
-          </div>
+              {canShowPersonalizedMatch ? (
+                <option value="match">Best match</option>
+              ) : null}
+              <option value="newest">Newest</option>
+              <option value="commute">Shortest travel</option>
+            </select>
+          </label>
         </div>
       </header>
 
@@ -425,16 +433,14 @@ export function JobsPage() {
           aria-label="Job filters"
         >
           <div className="filter-panel__heading">
-            <h2>
-              <SlidersHorizontal size={18} aria-hidden="true" /> Filters
-            </h2>
+            <h2>Filters</h2>
             <button className="text-button" onClick={clearFilters} type="button">
-              <RotateCcw size={15} aria-hidden="true" /> Clear all
+              Clear
             </button>
           </div>
 
           <label className="field">
-            <span>Maximum commute</span>
+            <span>Maximum travel time</span>
             <select
               value={maxCommute}
               onChange={(event) => setMaxCommute(event.target.value)}
@@ -474,145 +480,141 @@ export function JobsPage() {
             </select>
           </label>
 
-          <label className="field">
-            <span>Transport mode</span>
-            <select
-              onChange={(event) => setTransportMode(event.target.value)}
-              value={transportMode}
-            >
-              {transportModes.map(([value, label]) => (
-                <option key={label} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>Workplace barangay</span>
-            <select
-              onChange={(event) => setBarangay(event.target.value)}
-              value={barangay}
-            >
-              <option value="">All Angeles City barangays</option>
-              {barangayOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>Schedule</span>
-            <select
-              onChange={(event) => setSchedule(event.target.value)}
-              value={schedule}
-            >
-              <option value="">Any schedule</option>
-              {scheduleOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="temporary-profile">
-            <strong>Guest match inputs</strong>
-            <p>
-              Filters stay in this browser session. Creating an account is not
-              required to explore results.
-            </p>
-          </div>
-
-          {user?.role === "job-seeker" ? (
-            <section className="saved-searches" aria-labelledby="saved-searches-heading">
-              <div className="saved-searches__heading">
-                <h3 id="saved-searches-heading">Saved searches & alerts</h3>
-                <button
-                  className="text-button"
-                  onClick={saveCurrentSearch}
-                  type="button"
+          <details className="advanced-filters">
+            <summary>More Filters</summary>
+            <div className="advanced-filters__body">
+              <label className="field">
+                <span>Transport mode</span>
+                <select
+                  onChange={(event) => setTransportMode(event.target.value)}
+                  value={transportMode}
                 >
-                  <BookmarkPlus size={15} aria-hidden="true" />
-                  Save current
-                </button>
-              </div>
-              {savedSearches.length ? (
-                <ul>
-                  {savedSearches.map((savedSearch) => (
-                    <li key={savedSearch.id}>
-                      <button
-                        className="saved-searches__apply"
-                        onClick={() => applySavedSearch(savedSearch)}
-                        type="button"
-                      >
-                        <strong>
-                          {savedSearch.query || "All local jobs"}
-                        </strong>
-                        <small>
-                          {[
-                            savedSearch.barangay,
-                            ...savedSearch.workTypes,
-                            savedSearch.schedule,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ") || "Default filters"}
-                        </small>
-                      </button>
-                      <button
-                        aria-label={`${savedSearch.alerts ? "Disable" : "Enable"} alerts for ${savedSearch.query || "all local jobs"}`}
-                        aria-pressed={savedSearch.alerts}
-                        className="icon-button"
-                        onClick={() =>
-                          setSavedSearches((current) =>
-                            current.map((item) =>
-                              item.id === savedSearch.id
-                                ? { ...item, alerts: !item.alerts }
-                                : item,
-                            ),
-                          )
-                        }
-                        type="button"
-                      >
-                        <Bell size={16} aria-hidden="true" />
-                      </button>
-                      <button
-                        aria-label={`Remove saved search ${savedSearch.query || "all local jobs"}`}
-                        className="icon-button"
-                        onClick={() =>
-                          setSavedSearches((current) =>
-                            current.filter(
-                              (item) => item.id !== savedSearch.id,
-                            ),
-                          )
-                        }
-                        type="button"
-                      >
-                        <Trash2 size={16} aria-hidden="true" />
-                      </button>
-                    </li>
+                  {transportModes.map(([value, label]) => (
+                    <option key={label} value={value}>
+                      {label}
+                    </option>
                   ))}
-                </ul>
+                </select>
+              </label>
+
+              <label className="field">
+                <span>Workplace barangay</span>
+                <select
+                  onChange={(event) => setBarangay(event.target.value)}
+                  value={barangay}
+                >
+                  <option value="">All Angeles City barangays</option>
+                  {barangayOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field">
+                <span>Schedule</span>
+                <select
+                  onChange={(event) => setSchedule(event.target.value)}
+                  value={schedule}
+                >
+                  <option value="">Any schedule</option>
+                  {scheduleOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {user?.role === "job-seeker" ? (
+                <section className="saved-searches" aria-labelledby="saved-searches-heading">
+                  <div className="saved-searches__heading">
+                    <h3 id="saved-searches-heading">Saved Searches</h3>
+                    <button
+                      className="text-button"
+                      onClick={saveCurrentSearch}
+                      type="button"
+                    >
+                      <BookmarkPlus size={15} aria-hidden="true" />
+                      Save Current
+                    </button>
+                  </div>
+                  {savedSearches.length ? (
+                    <ul>
+                      {savedSearches.map((savedSearch) => (
+                        <li key={savedSearch.id}>
+                          <button
+                            className="saved-searches__apply"
+                            onClick={() => applySavedSearch(savedSearch)}
+                            type="button"
+                          >
+                            <strong>
+                              {savedSearch.query || "All local jobs"}
+                            </strong>
+                            <small>
+                              {[
+                                savedSearch.barangay,
+                                ...savedSearch.workTypes,
+                                savedSearch.schedule,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "Default filters"}
+                            </small>
+                          </button>
+                          <button
+                            aria-label={`${savedSearch.alerts ? "Disable" : "Enable"} alerts for ${savedSearch.query || "all local jobs"}`}
+                            aria-pressed={savedSearch.alerts}
+                            className="icon-button"
+                            onClick={() =>
+                              setSavedSearches((current) =>
+                                current.map((item) =>
+                                  item.id === savedSearch.id
+                                    ? { ...item, alerts: !item.alerts }
+                                    : item,
+                                ),
+                              )
+                            }
+                            type="button"
+                          >
+                            <Bell size={16} aria-hidden="true" />
+                          </button>
+                          <button
+                            aria-label={`Remove saved search ${savedSearch.query || "all local jobs"}`}
+                            className="icon-button"
+                            onClick={() =>
+                              setSavedSearches((current) =>
+                                current.filter(
+                                  (item) => item.id !== savedSearch.id,
+                                ),
+                              )
+                            }
+                            type="button"
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>Save a useful set of filters for later.</p>
+                  )}
+                  <p aria-live="polite" className="field-hint">
+                    {savedSearchStatus}
+                  </p>
+                </section>
               ) : (
-                <p>Save a useful filter set and optionally turn on its alert.</p>
+                <p className="field-hint">
+                  Tip: You can browse first.
+                  <br />
+                  Sign in only to save or apply.
+                </p>
               )}
-              <p aria-live="polite" className="field-hint">
-                {savedSearchStatus}
-              </p>
-            </section>
-          ) : (
-            <p className="field-hint">
-              Sign in to save searches and alerts. Browsing stays public.
-            </p>
-          )}
+            </div>
+          </details>
         </aside>
 
-        <section
-          aria-label="Job results"
-          className={`results-panel${view === "map" ? " results-panel--mobile-hidden" : ""}`}
-        >
+        <section aria-label="Job results" className="results-panel">
           {activeQuery ||
           selectedWorkTypes.length ||
           minimumPay ||
@@ -620,7 +622,7 @@ export function JobsPage() {
           barangay ||
           schedule ? (
             <div className="active-filters" aria-label="Active filters">
-              <strong>Active filters</strong>
+              <strong>Active Filters</strong>
               <div className="chip-row">
                 {activeQuery ? (
                   <button className="chip is-active" onClick={clearQuery} type="button">
@@ -684,9 +686,11 @@ export function JobsPage() {
           ) : null}
           <div className="results-heading">
             <div>
-              <p className="kicker">Recommended opportunities</p>
+              <p className="kicker">
+                {canShowPersonalizedMatch ? "Recommended jobs" : "Local jobs"}
+              </p>
               <h2>
-                {results.length} {results.length === 1 ? "job" : "jobs"} found
+                {results.length} {results.length === 1 ? "Job" : "Jobs"} Found
               </h2>
             </div>
             <label className="sort-field">
@@ -695,15 +699,38 @@ export function JobsPage() {
                 onChange={(event) =>
                   setSortBy(event.target.value as SortOption)
                 }
-                value={sortBy}
+                value={visibleSortBy}
               >
-                <option value="match">Best match</option>
-                <option value="skill">Highest skill fit</option>
+                {canShowPersonalizedMatch ? (
+                  <>
+                    <option value="match">Best match</option>
+                    <option value="skill">Highest skill fit</option>
+                  </>
+                ) : null}
                 <option value="newest">Newest</option>
                 <option value="commute">Shortest commute</option>
               </select>
             </label>
           </div>
+
+          {!user ? (
+            <aside className="notice jobs-match-prompt" role="status">
+              <p>
+                Sign in to compare jobs with your skills. You can still browse
+                every public listing without an account.
+              </p>
+              <Link className="text-link" to="/sign-in">
+                Sign In
+              </Link>
+            </aside>
+          ) : user.role === "job-seeker" && !canShowPersonalizedMatch ? (
+            <aside className="notice jobs-match-prompt" role="status">
+              <p>Add skills to compare jobs when you are ready.</p>
+              <Link className="text-link" to="/onboarding/skills">
+                Add Skills
+              </Link>
+            </aside>
+          ) : null}
 
           {isLoading ? (
             <section className="status-state" aria-live="polite">
@@ -712,8 +739,16 @@ export function JobsPage() {
                 size={28}
                 aria-hidden="true"
               />
-              <h2>Finding suitable local jobs</h2>
-              <p>Comparing skill evidence and commute estimates…</p>
+              <h2>
+                {canShowPersonalizedMatch
+                  ? "Finding Suitable Local Jobs"
+                  : "Finding Local Jobs"}
+              </h2>
+              <p>
+                {canShowPersonalizedMatch
+                  ? "Comparing skill evidence and commute estimates…"
+                  : "Checking public listings and travel estimates…"}
+              </p>
               <div className="job-loading-skeleton" aria-hidden="true">
                 <span />
                 <span />
@@ -723,17 +758,17 @@ export function JobsPage() {
           ) : hasServiceError ? (
             <section className="status-state status-state--error" role="alert">
               <AlertTriangle size={28} aria-hidden="true" />
-              <h2>We could not load job results</h2>
+              <h2>We Could Not Load Job Results</h2>
               <p>
                 Your filters are safe. Check the connection and try loading
                 the results again.
               </p>
               <button
                 className="button button--primary"
-                onClick={clearPreviewState}
+                onClick={retryJobs}
                 type="button"
               >
-                Try again
+                Try Again
               </button>
             </section>
           ) : results.length ? (
@@ -747,7 +782,12 @@ export function JobsPage() {
                   onClick={() => setSelectedJobId(job.id)}
                   onFocusCapture={() => setSelectedJobId(job.id)}
                 >
-                  <JobCard job={job} />
+                  <JobCard
+                    job={job}
+                    showMatch={canShowPersonalizedMatch}
+                    showSummary={false}
+                    showTravelFact
+                  />
                 </div>
               ))}
             </div>
@@ -756,7 +796,7 @@ export function JobsPage() {
               <span className="icon-tile icon-tile--soft">
                 <Search size={26} aria-hidden="true" />
               </span>
-              <h2>No jobs match these filters</h2>
+              <h2>No Jobs Match These Filters</h2>
               <p>
                 Try a related skill, raise the commute limit, or clear one of
                 the filters.
@@ -766,7 +806,7 @@ export function JobsPage() {
                 onClick={clearFilters}
                 type="button"
               >
-                Clear all filters
+                Clear All Filters
               </button>
             </section>
           )}
@@ -775,22 +815,21 @@ export function JobsPage() {
             <aside className="offline-note" role="status">
               <WifiOff size={18} aria-hidden="true" />
               <span>
-                Previously loaded prototype results remain visible. Live data
-                refresh, sign-in, and applications require a connection;
-                applications are never queued silently.
+                You are offline. Showing safely cached jobs. Reconnect to sign
+                in, compare skills, or apply. Applications stay online-only.
               </span>
             </aside>
           ) : null}
         </section>
 
         <aside
-          className={`map-panel${view === "map" ? " map-panel--mobile-visible" : ""}`}
+          className="map-panel"
           aria-label="Map results and textual route summary"
         >
           <div className="map-panel__heading">
             <div>
-              <p className="kicker">Map results</p>
-              <h2>{results.length} jobs in range</h2>
+              <p className="kicker">Map Results</p>
+              <h2>{results.length} Jobs in Range</h2>
             </div>
             <button
               className="icon-button"
@@ -822,9 +861,9 @@ export function JobsPage() {
               <LocateFixed size={18} aria-hidden="true" />
               <span>
                 <strong>Location permission granted.</strong>
-                This frontend preview still uses your saved commute settings;
-                live coordinates will be sent to the routing service only
-                after that backend is connected.
+                This frontend preview still uses the selected travel limit and
+                reference map. Live coordinates will be used only after the
+                routing service is connected.
               </span>
             </div>
           ) : null}
@@ -849,19 +888,13 @@ export function JobsPage() {
             ))}
           </div>
           <div className="map-legend">
-            <strong>Text alternative</strong>
+            <strong>Map Summary</strong>
             {selectedJob ? (
               <p>
-                Selected result: {selectedJob.title} in{" "}
-                {selectedJob.location.barangay}, about{" "}
-                {selectedJob.route.distanceKm.toFixed(1)} km or{" "}
-                {selectedJob.route.estimatedMinutes} minutes away.{" "}
-                <Link
-                  className="dark-blue-link"
-                  to={`/jobs/${encodeURIComponent(selectedJob.id)}`}
-                >
-                  View job details
-                </Link>
+                Selected job: {selectedJob.title}
+                <br />
+                About {selectedJob.route.distanceKm.toFixed(1)} km or{" "}
+                {selectedJob.route.estimatedMinutes} minutes away.
               </p>
             ) : (
               <p>No jobs are currently inside the selected travel limit.</p>

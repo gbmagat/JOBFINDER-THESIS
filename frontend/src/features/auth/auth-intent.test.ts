@@ -26,6 +26,12 @@ describe("sanitizeReturnTo", () => {
       "/jobs/it-101?from=recommended#match",
     );
     expect(sanitizeReturnTo("/applications")).toBe("/applications");
+    expect(sanitizeReturnTo("/onboarding/profile")).toBe(
+      "/onboarding/profile",
+    );
+    expect(sanitizeReturnTo("/onboarding/skills")).toBe(
+      "/onboarding/skills",
+    );
   });
 
   it.each([

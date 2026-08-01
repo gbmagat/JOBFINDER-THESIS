@@ -143,9 +143,9 @@ export function SignInDialog({
         <div className="auth-gate__body">
           <header className="auth-gate__header">
             <div>
-              <p className="auth-gate__eyebrow">Sign in to apply</p>
+              <p className="auth-gate__eyebrow">Sign In to Apply</p>
               <h2 className="auth-gate__title" id={titleId}>
-                Keep your application connected
+                Keep Your Application Connected
               </h2>
             </div>
             <button
@@ -164,7 +164,7 @@ export function SignInDialog({
           </p>
 
           <div className="auth-gate__job">
-            <span className="auth-gate__job-label">Applying for</span>
+            <span className="auth-gate__job-label">Applying For</span>
             <strong>{jobTitle}</strong>
           </div>
 
@@ -206,27 +206,28 @@ export function SignInDialog({
                 disabled={submitting}
                 type="submit"
               >
-                {submitting ? "Signing in…" : "Sign in and continue"}
+                {submitting ? "Signing in…" : "Sign In and Continue"}
               </button>
               <button
                 className="auth-gate__button auth-gate__button--secondary"
                 onClick={handleCreateAccount}
                 type="button"
               >
-                Create an account
+                Create an Account
               </button>
               <button
                 className="auth-gate__button auth-gate__button--quiet"
                 onClick={closeAndDiscardIntent}
                 type="button"
               >
-                Continue browsing
+                Continue Browsing
               </button>
             </div>
           </form>
 
           <p className="auth-gate__privacy">
-            Your password is not stored in this frontend demo.
+            Passwords are verified by the server and are not stored in your
+            browser.
           </p>
         </div>
     </dialog>

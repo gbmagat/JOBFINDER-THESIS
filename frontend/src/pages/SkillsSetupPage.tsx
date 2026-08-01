@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -24,6 +24,7 @@ import {
 } from "../features/profile/storage";
 import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
+import { apiRequest } from "../lib/api";
 
 const MAX_SKILLS = 10;
 
@@ -45,6 +46,8 @@ const SUGGESTED_SKILLS = [
   "Technical support",
   "Help desk support",
 ];
+
+type SkillOption = { name: string; detail: string };
 
 function normalizeSkill(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, 48);
@@ -74,6 +77,51 @@ export function SkillsSetupPage() {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [matchingInfoOpen, setMatchingInfoOpen] = useState(false);
   const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [apiSkillOptions, setApiSkillOptions] = useState<SkillOption[]>([]);
+
+  useEffect(() => {
+    if (import.meta.env.MODE === "test") return;
+
+    let active = true;
+    apiRequest<{
+      profile: { skills: { name: string }[] };
+    }>("/profile")
+      .then(({ profile }) => {
+        if (active) setSelectedSkills(profile.skills.map((skill) => skill.name));
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [setSelectedSkills, user?.id]);
+
+  useEffect(() => {
+    if (!searchOpen || import.meta.env.MODE === "test") return;
+
+    let active = true;
+    const search = query.trim();
+    apiRequest<{ skills: { name: string }[] }>(
+      `/skills${search ? `?query=${encodeURIComponent(search)}` : ""}`,
+    )
+      .then(({ skills }) => {
+        if (!active) return;
+        setApiSkillOptions(
+          skills.map((skill) => ({
+            name: skill.name,
+            detail: "JobFinder skill",
+          })),
+        );
+      })
+      .catch(() => {
+        if (active) setApiSkillOptions([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [query, searchOpen]);
 
   const selectedKeys = useMemo(
     () => new Set(selectedSkills.map(skillKey)),
@@ -82,17 +130,19 @@ export function SkillsSetupPage() {
   const normalizedQuery = normalizeSkill(query);
   const visibleOptions = useMemo(() => {
     const queryKey = skillKey(query);
+    const sourceOptions =
+      import.meta.env.MODE === "test" ? SKILL_OPTIONS : apiSkillOptions;
     const options = queryKey
-      ? SKILL_OPTIONS.filter(({ name, detail }) =>
+      ? sourceOptions.filter(({ name, detail }) =>
           `${name} ${detail}`.toLocaleLowerCase().includes(queryKey),
         )
-      : SKILL_OPTIONS.slice(0, 6);
+      : sourceOptions.slice(0, 6);
 
     return options.slice(0, 6);
-  }, [query]);
+  }, [apiSkillOptions, query]);
   const canAddCustomSkill =
     normalizedQuery.length >= 2 &&
-    !SKILL_OPTIONS.some(({ name }) => skillKey(name) === skillKey(query)) &&
+    !visibleOptions.some(({ name }) => skillKey(name) === skillKey(query)) &&
     !selectedKeys.has(skillKey(query));
 
   function addSkill(value: string) {
@@ -129,7 +179,25 @@ export function SkillsSetupPage() {
     setQuery("");
   }
 
-  function handleComplete() {
+  async function handleComplete() {
+    setSaving(true);
+    setStatus("Saving your skills…");
+    try {
+      await apiRequest("/profile/skills", {
+        method: "PUT",
+        body: JSON.stringify({ skills: selectedSkills }),
+      });
+      window.dispatchEvent(new Event("jobfinder:profile-updated"));
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "JobFinder could not save your skills.",
+      );
+      setSaving(false);
+      return;
+    }
+
     const intent = consumeApplyIntent();
 
     if (intent) {
@@ -157,7 +225,7 @@ export function SkillsSetupPage() {
               <ArrowLeft size={18} aria-hidden="true" />
             </button>
             <div>
-              <strong>Add a skill</strong>
+          <strong>Add a Skill</strong>
               <span>{selectedSkills.length} selected</span>
             </div>
           </header>
@@ -181,12 +249,12 @@ export function SkillsSetupPage() {
           <div className="skill-results-heading">
             <div>
               <p className="kicker">
-                {normalizedQuery ? "Best matches" : "Popular skills"}
+                    {normalizedQuery ? "Best Matches" : "Popular Skills"}
               </p>
               <h1>
                 {normalizedQuery
                   ? `Results for “${normalizedQuery}”`
-                  : "Choose a skill"}
+                      : "Choose a Skill"}
               </h1>
             </div>
             <span>{visibleOptions.length} results</span>
@@ -237,7 +305,7 @@ export function SkillsSetupPage() {
               type="button"
             >
               <Plus size={18} aria-hidden="true" />
-              Add “{normalizedQuery}” as a custom skill
+                  Add “{normalizedQuery}” as a Custom Skill
             </button>
           ) : null}
 
@@ -254,7 +322,7 @@ export function SkillsSetupPage() {
               }}
               type="button"
             >
-              Done · {selectedSkills.length} selected
+          Done · {selectedSkills.length} Selected
             </button>
           </div>
         </div>
@@ -278,7 +346,7 @@ export function SkillsSetupPage() {
             <ArrowLeft size={18} aria-hidden="true" />
           </Link>
           <div className="onboarding-topbar__copy">
-            <strong>Profile setup</strong>
+            <strong>Profile Setup</strong>
             <span>2 of 2</span>
           </div>
           <div
@@ -295,7 +363,7 @@ export function SkillsSetupPage() {
         </header>
 
         <div className="onboarding-intro">
-          <h1>Add your skills</h1>
+          <h1>Add Your Skills</h1>
           <p>Skills help explain why a job matches you.</p>
         </div>
 
@@ -304,7 +372,7 @@ export function SkillsSetupPage() {
           className="skills-summary"
         >
           <div className="skills-summary__header">
-            <h2 id="selected-skills-heading">Your skills</h2>
+                <h2 id="selected-skills-heading">Your Skills</h2>
             <span>{selectedSkills.length} added</span>
           </div>
 
@@ -341,7 +409,7 @@ export function SkillsSetupPage() {
         >
           <span>
             <Search size={20} aria-hidden="true" />
-            Search and add a skill
+                Search and Add a Skill
           </span>
           <ChevronRight size={21} aria-hidden="true" />
         </button>
@@ -355,7 +423,7 @@ export function SkillsSetupPage() {
           >
             <span>
               <Lightbulb size={18} aria-hidden="true" />
-              Suggested for you
+                  Suggested for You
             </span>
             <span>
               {availableSuggestions.length} skills
@@ -396,7 +464,7 @@ export function SkillsSetupPage() {
           >
             <span>
               <Info size={18} aria-hidden="true" />
-              How matching uses your skills
+                How Matching Uses Your Skills
             </span>
             {matchingInfoOpen ? (
               <ChevronDown size={18} aria-hidden="true" />
@@ -407,9 +475,8 @@ export function SkillsSetupPage() {
           {matchingInfoOpen ? (
             <div className="onboarding-disclosure__content skill-info">
               <p>
-                JobFinder compares both exact and ontology-related skills. Your
-                skill fit contributes 70% of the recommendation score, while
-                geographic accessibility contributes 30%.
+                JobFinder checks exact and related skills. Skills count for
+                70% of the match, while travel fit counts for 30%.
               </p>
             </div>
           ) : null}
@@ -422,11 +489,11 @@ export function SkillsSetupPage() {
         <div className="onboarding-actions">
           <button
             className="button button--primary button--block"
-            disabled={!selectedSkills.length}
+            disabled={!selectedSkills.length || saving}
             onClick={handleComplete}
             type="button"
           >
-            Save and complete profile
+            {saving ? "Saving Skills…" : "Save and Complete Profile"}
           </button>
         </div>
       </div>

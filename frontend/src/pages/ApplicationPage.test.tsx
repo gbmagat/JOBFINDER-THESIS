@@ -32,7 +32,7 @@ describe("ApplicationPage", () => {
     renderApplication("it-support-assistant-lumina-tech");
 
     await user.click(
-      screen.getByRole("button", { name: "Continue to resume" }),
+      screen.getByRole("button", { name: "Continue" }),
     );
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Enter your full name",
@@ -45,11 +45,11 @@ describe("ApplicationPage", () => {
     );
     await user.type(screen.getByLabelText("Mobile number"), "09171234567");
     await user.click(
-      screen.getByRole("button", { name: "Continue to resume" }),
+      screen.getByRole("button", { name: "Continue" }),
     );
 
     expect(
-      screen.getByRole("heading", { name: "Add your resume and message" }),
+      screen.getByRole("heading", { name: "Add Your Resume and Message" }),
     ).toBeInTheDocument();
 
     const resume = new File(["resume"], "gabriel-resume.pdf", {
@@ -61,20 +61,20 @@ describe("ApplicationPage", () => {
       "I would welcome the opportunity to contribute my support skills.",
     );
     await user.click(
-      screen.getByRole("button", { name: "Review application" }),
+      screen.getByRole("button", { name: "Review Application" }),
     );
 
     expect(
-      screen.getByRole("heading", { name: "Review your application" }),
+      screen.getByRole("heading", { name: "Review Application" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox"));
     await user.click(
-      screen.getByRole("button", { name: "Submit application" }),
+      screen.getByRole("button", { name: "Submit Application" }),
     );
 
     expect(
       await screen.findByRole("heading", {
-        name: "Your application was sent to Lumina Tech Solutions",
+        name: "Your Application Was Sent to Lumina Tech Solutions",
       }),
     ).toBeInTheDocument();
 
@@ -100,7 +100,7 @@ describe("ApplicationPage", () => {
     renderApplication("it-support-assistant-lumina-tech");
 
     await user.type(screen.getByLabelText("Full name"), "Gabriel Magat Jr.");
-    await user.click(screen.getByRole("button", { name: "Save draft" }));
+    await user.click(screen.getByRole("button", { name: "Save Draft" }));
 
     expect(screen.getByRole("status")).toHaveTextContent(
       "Draft saved on this device",
@@ -119,7 +119,7 @@ describe("ApplicationPage", () => {
     renderApplication("customer-service-associate-clarkconnect");
 
     const handoff = screen.getByRole("link", {
-      name: "Open email application",
+        name: "Open Email Application",
     });
     expect(handoff).toHaveAttribute(
       "href",

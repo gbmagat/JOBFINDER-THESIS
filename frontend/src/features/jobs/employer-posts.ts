@@ -174,7 +174,7 @@ function toJobListing(
         credit: 0,
       })),
       summary:
-        "This prototype preview uses the saved profile evidence. The matching API will provide the final ontology and location scores.",
+        "This preview uses the saved profile. The final matching service will provide updated skill and travel scores.",
     },
     route: {
       routeId: `route-${post.id}`,

@@ -9,7 +9,7 @@ export function NotFoundPage() {
           <SearchX size={30} aria-hidden="true" />
         </span>
         <p className="eyebrow">404</p>
-        <h1>We could not find that page</h1>
+        <h1>We Could Not Find That Page</h1>
         <p>The link may be outdated, or the job may no longer be available.</p>
         <Link className="button button--primary" to="/jobs">
           <ArrowLeft size={18} aria-hidden="true" /> Browse current jobs

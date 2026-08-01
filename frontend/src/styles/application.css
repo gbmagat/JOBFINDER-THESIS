@@ -16,7 +16,7 @@
   border: 1px solid var(--blue-100);
   border-radius: var(--radius-lg);
   background: var(--white);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-sm);
 }
 
 .application-stepper__list {
@@ -52,7 +52,7 @@
   z-index: 1;
   display: flex;
   width: 100%;
-  min-height: 5.75rem;
+  min-height: 4.75rem;
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
@@ -98,14 +98,14 @@
 }
 
 .application-stepper__item.is-current > button {
-  background: var(--blue-50);
-  color: var(--blue-900);
+  background: #f5ecd3;
+  color: var(--palette-navy);
 }
 
 .application-stepper__item.is-current .application-stepper__number {
-  border-color: var(--blue-700);
-  background: var(--blue-700);
-  box-shadow: 0 0 0 4px var(--blue-100);
+  border-color: var(--palette-green);
+  background: var(--palette-green);
+  box-shadow: 0 0 0 4px var(--green-100);
   color: var(--white);
 }
 
@@ -114,8 +114,8 @@
 }
 
 .application-stepper__item.is-complete .application-stepper__number {
-  border-color: var(--blue-600);
-  background: var(--blue-600);
+  border-color: var(--palette-green);
+  background: var(--palette-green);
   color: var(--white);
 }
 
@@ -181,6 +181,10 @@
   gap: var(--space-1-5);
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--blue-100);
+}
+
+.application-step-panel__header > .icon-tile {
+  display: none;
 }
 
 .application-step-panel__header > div {
@@ -256,7 +260,7 @@
   padding: var(--space-2);
   border: 1px dashed var(--blue-300);
   border-radius: var(--radius-lg);
-  background: linear-gradient(145deg, var(--blue-50), var(--white));
+  background: var(--blue-50);
   color: var(--blue-800);
   cursor: pointer;
   transition:
@@ -574,6 +578,41 @@
 @media (min-width: 48rem) {
   .application-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  .application-page {
+    padding-top: var(--space-4);
+  }
+
+  .application-stepper__item > button {
+    min-height: 4.875rem;
+  }
+
+  .application-stepper__item:not(:last-child)::after {
+    top: 2.4rem;
+  }
+
+  .application-step-panel {
+    gap: 1.25rem;
+  }
+
+  .application-step-panel__header h2 {
+    font-size: var(--text-2xl);
+  }
+
+  .application-fields {
+    column-gap: 2.5rem;
+    row-gap: var(--space-3);
+  }
+
+  .application-actions .button--secondary {
+    min-width: 8.3125rem;
+  }
+
+  .application-actions .button--primary {
+    min-width: 11.3125rem;
   }
 }
 

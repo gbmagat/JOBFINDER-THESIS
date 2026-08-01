@@ -5,12 +5,45 @@ import {
   Plus,
   UsersRound,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { readEmployerApplications } from "../features/applications/submitted-storage";
 import { useAuth } from "../features/auth/AuthContext";
 import { isLuminaDemoEmployer } from "../features/employer/demo-workspace";
 import { readPublishedEmployerPosts } from "../features/jobs/employer-posts";
+import { apiRequest } from "../lib/api";
+
+type EmployerApiJob = {
+  applicantCount: number;
+  id: string;
+  location: {
+    barangay?: string;
+    city?: string;
+    venue?: string;
+  };
+  newApplicantCount: number;
+  postedAt: string;
+  source?: {
+    publishedAt?: string;
+  };
+  status: string;
+  strongMatchCount: number;
+  title: string;
+};
+
+type EmployerJobsResponse = {
+  jobs: EmployerApiJob[];
+};
+
+function formatJobLocation(job: EmployerApiJob) {
+  return [job.location.barangay || job.location.venue, job.location.city]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function formatJobStatus(status: string) {
+  return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+}
 
 const seededPosts = [
   {
@@ -33,8 +66,31 @@ const seededPosts = [
 
 export function EmployerPostsPage() {
   const { user } = useAuth();
+  const usesTestData = import.meta.env.MODE === "test";
   const isDemoEmployer = isLuminaDemoEmployer(user?.id);
-  const posts = useMemo(() => {
+  const [apiJobs, setApiJobs] = useState<EmployerApiJob[] | null>(null);
+
+  useEffect(() => {
+    if (usesTestData || !user?.id) return;
+
+    let isActive = true;
+    setApiJobs(null);
+    apiRequest<EmployerJobsResponse>("/employer/jobs")
+      .then((result) => {
+        if (isActive) setApiJobs(result.jobs);
+      })
+      .catch(() => {
+        if (isActive) setApiJobs(null);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [user?.id, usesTestData]);
+
+  const localPosts = useMemo(() => {
+    if (!usesTestData) return [];
+
     const applicationCounts = readEmployerApplications(user?.id).reduce<
       Record<string, number>
     >((counts, application) => {
@@ -62,7 +118,18 @@ export function EmployerPostsPage() {
             }))
         : []),
     ];
-  }, [isDemoEmployer, user?.id]);
+  }, [isDemoEmployer, user?.id, usesTestData]);
+  const posts = useMemo(() => {
+    if (usesTestData) return localPosts;
+    return (apiJobs ?? []).map((job) => ({
+      id: job.id,
+      title: job.title,
+      location: formatJobLocation(job),
+      publishedAt: job.source?.publishedAt || job.postedAt,
+      status: formatJobStatus(job.status),
+      applicants: job.applicantCount,
+    }));
+  }, [apiJobs, localPosts, usesTestData]);
 
   return (
     <div className="page employer-post-management">
@@ -70,9 +137,9 @@ export function EmployerPostsPage() {
         <div className="page-header__copy">
           <span className="eyebrow">
             <BriefcaseBusiness size={16} aria-hidden="true" />
-            Employer workspace
+            Employer Workspace
           </span>
-          <h1>Job posts</h1>
+          <h1>Job Posts</h1>
           <p>
             Review direct listings, open their public page, and inspect
             applicants. PESO/LGU dataset records are not managed here.
@@ -80,15 +147,15 @@ export function EmployerPostsPage() {
         </div>
         <Link className="button button--primary" to="/employer/posts/new">
           <Plus size={18} aria-hidden="true" />
-          Create job post
+          Create Job Post
         </Link>
       </header>
 
       <section className="surface" aria-labelledby="managed-posts-heading">
         <header className="surface__header">
           <div>
-            <p className="kicker">Direct listings</p>
-            <h2 id="managed-posts-heading">{posts.length} job posts</h2>
+            <p className="kicker">Direct Listings</p>
+            <h2 id="managed-posts-heading">{posts.length} Job Posts</h2>
           </div>
           <span className="badge badge--success">Employer-owned</span>
         </header>
@@ -141,7 +208,7 @@ export function EmployerPostsPage() {
                         className="text-link"
                         to={`/jobs/${encodeURIComponent(post.id)}`}
                       >
-                        Public page
+                        Public Page
                       </Link>
                     </div>
                   </td>
@@ -150,7 +217,7 @@ export function EmployerPostsPage() {
               ) : (
                 <tr>
                   <td colSpan={4}>
-                    <strong>No job posts yet</strong>
+                    <strong>No Job Posts Yet</strong>
                     <span>
                       Create your first direct listing to start receiving
                       applications.

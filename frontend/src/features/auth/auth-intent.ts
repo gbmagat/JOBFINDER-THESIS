@@ -42,6 +42,7 @@ function isAllowedPath(pathname: string): boolean {
     /^\/jobs\/?$/.test(pathname) ||
     /^\/jobs\/[^/]+(?:\/(?:route|apply))?\/?$/.test(pathname) ||
     /^\/(?:saved|applications|profile|preferences)\/?$/.test(pathname) ||
+    /^\/onboarding\/(?:profile|skills)\/?$/.test(pathname) ||
     /^\/about\/data-sources\/?$/.test(pathname)
   );
 }
