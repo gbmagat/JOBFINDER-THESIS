@@ -1,11 +1,11 @@
 {
   "name": "jobfinder-frontend",
   "private": true,
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --mode test",
-    "build": "tsc -b && vite build --mode test",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
     "check": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest"

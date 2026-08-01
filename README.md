@@ -1,15 +1,16 @@
-# JobFinder — Version 2.0 Frontend
+# JobFinder — Version 3.0 Connected Frontend & Backend
 
-This branch contains the completed responsive JobFinder frontend. It runs with local demo data, so no backend server or database is required.
+This version connects the responsive React frontend to a Node.js, Express, and SQLite backend. It includes authentication, job-seeker profiles, ontology-based skill matching, geographic accessibility scoring, saved jobs, applications, employer job posts, and applicant review.
 
 ## Run locally
 
 ```powershell
 npm install --prefix frontend
+npm install --prefix backend
 npm run dev
 ```
 
-Open the local address shown by Vite. You can browse as a guest or use the sign-in and registration screens with demo information.
+The frontend opens through Vite and sends API requests to the backend. Development mode includes demo jobs and an Employer account documented in `backend/README.md`.
 
 ## Checks
 
@@ -19,4 +20,4 @@ npm test
 npm run build
 ```
 
-The connected frontend and backend are preserved separately for Version 3.0.
+The frontend-only release remains available through the `v2.0-frontend` Git tag.
