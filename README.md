@@ -1,6 +1,6 @@
 # JobFinder — Version 3.4 Profile Completion & Match Logic
 
-This version requires job seekers to complete their personal details, home and commute information, and at least one skill before personalized match percentages appear. It also improves incomplete-profile guidance, candidate score handling, dashboard alignment, and job-card hover behavior across responsive layouts.
+This version requires job seekers to complete their personal details, home area, and at least one skill before personalized match percentages appear. Geographic matching is distance-only: every available job stays visible, no commute ceiling is requested, and no estimated travel time is shown.
 
 ## Run locally
 

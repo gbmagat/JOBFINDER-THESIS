@@ -22,12 +22,6 @@ const ROUTE_MODES = new Set([
   "drive",
   "public-transport",
 ]);
-const ACCESSIBILITY_STATUSES = new Set([
-  "within-limit",
-  "near-limit",
-  "over-limit",
-]);
-
 function object(value, field) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${field} must be an object`);
@@ -171,13 +165,6 @@ export function validateAndNormalizeDatasetJob(value) {
   if (latitude > 90) throw new Error("location.latitude must be at most 90");
   if (longitude > 180) throw new Error("location.longitude must be at most 180");
 
-  const accessibilityStatus = text(
-    route.accessibilityStatus,
-    "route.accessibilityStatus",
-  );
-  if (!ACCESSIBILITY_STATUSES.has(accessibilityStatus)) {
-    throw new Error("route.accessibilityStatus is invalid");
-  }
   if (typeof route.isEstimate !== "boolean") {
     throw new Error("route.isEstimate must be true or false");
   }
@@ -191,14 +178,9 @@ export function validateAndNormalizeDatasetJob(value) {
   const steps = route.steps.map((value, index) => {
     const step = object(value, `route.steps[${index}]`);
     return {
-      ...step,
       order: number(step.order, `route.steps[${index}].order`, 1),
       instruction: text(step.instruction, `route.steps[${index}].instruction`),
       distanceKm: number(step.distanceKm, `route.steps[${index}].distanceKm`),
-      estimatedMinutes: number(
-        step.estimatedMinutes,
-        `route.steps[${index}].estimatedMinutes`,
-      ),
     };
   });
 
@@ -256,11 +238,9 @@ export function validateAndNormalizeDatasetJob(value) {
       ),
     },
     route: {
-      ...route,
       routeId: text(route.routeId, "route.routeId"),
       mode: routeMode,
       distanceKm: number(route.distanceKm, "route.distanceKm"),
-      estimatedMinutes: number(route.estimatedMinutes, "route.estimatedMinutes"),
       ...(route.estimatedFarePhp === undefined
         ? {}
         : {
@@ -271,7 +251,6 @@ export function validateAndNormalizeDatasetJob(value) {
           }),
       steps,
       textSummary: text(route.textSummary, "route.textSummary"),
-      accessibilityStatus,
       isEstimate: route.isEstimate,
     },
     source: {

@@ -84,9 +84,10 @@ employer-owned job. Imports use incremental upsert behavior: records omitted
 from a later file are not automatically closed. The source dataset must provide
 a closing date or a later update for listings that are no longer available.
 
-The location part of a personalized match uses the stricter ratio between the
-saved distance limit and saved travel-time limit. A short but unusually slow
-route therefore cannot receive an incorrectly high accessibility score.
+The location part of a personalized match uses mapped route distance only. Its
+score is `round(100 / (1 + distanceKm / 10))`, where 10 km is a fixed scoring
+scale rather than a user limit. Distance changes ranking but never removes an
+available job from search results.
 
 ## Completed backend behavior
 

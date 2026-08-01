@@ -24,11 +24,6 @@ export type TravelMode =
   | "drive"
   | "public-transport";
 
-export type AccessibilityStatus =
-  | "within-limit"
-  | "near-limit"
-  | "over-limit";
-
 export type SkillEvidenceKind = "exact" | "related" | "missing";
 
 export type EvidenceSource = "profile" | "resume" | "self-reported";
@@ -65,7 +60,6 @@ export interface RouteStep {
   order: number;
   instruction: string;
   distanceKm?: number;
-  estimatedMinutes?: number;
 }
 
 export interface RouteOption {
@@ -73,11 +67,9 @@ export interface RouteOption {
   mode: TravelMode;
   geometry?: GeoJsonLineString;
   distanceKm: number;
-  estimatedMinutes: number;
   estimatedFarePhp?: number;
   steps: RouteStep[];
   textSummary: string;
-  accessibilityStatus: AccessibilityStatus;
   isEstimate: boolean;
 }
 

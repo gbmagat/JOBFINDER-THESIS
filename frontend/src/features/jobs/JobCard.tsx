@@ -8,14 +8,14 @@ export interface JobCardProps {
   job: JobListing;
   showMatch?: boolean;
   showSummary?: boolean;
-  showTravelFact?: boolean;
+  showDistanceFact?: boolean;
 }
 
 export function JobCard({
   job,
   showMatch = false,
   showSummary = true,
-  showTravelFact = false,
+  showDistanceFact = false,
 }: JobCardProps): ReactElement {
   const detailsHref = `/jobs/${encodeURIComponent(job.id)}`;
 
@@ -47,14 +47,14 @@ export function JobCard({
 
       <p className="job-card__location">
         {job.location.barangay}, {job.location.city}
-        {!showTravelFact ? ` · ${job.route.estimatedMinutes} min travel` : ""}
+        {!showDistanceFact ? ` · ${job.route.distanceKm.toFixed(1)} km away` : ""}
       </p>
 
       <ul className="job-card__facts" aria-label="Job summary">
         <li>{job.employmentType}</li>
         <li>{job.workArrangement}</li>
-        {showTravelFact ? (
-          <li>{job.route.estimatedMinutes} min travel</li>
+        {showDistanceFact ? (
+          <li>{job.route.distanceKm.toFixed(1)} km away</li>
         ) : null}
       </ul>
 

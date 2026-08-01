@@ -9,7 +9,6 @@ import {
   ArrowLeft,
   LocateFixed,
   MapPin,
-  Navigation,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -20,7 +19,6 @@ import {
   sanitizeReturnTo,
 } from "../features/auth/auth-intent";
 import {
-  COMMUTE_MINUTES_KEY,
   DEFAULT_PROFILE_DETAILS,
   PROFILE_DETAILS_KEY,
 } from "../features/profile/storage";
@@ -32,17 +30,13 @@ type ProfileField =
   | "fullName"
   | "mobileNumber"
   | "barangay"
-  | "city"
-  | "maximumDistance"
-  | "maximumMinutes";
+  | "city";
 
 const profileFieldIds: Record<ProfileField, string> = {
   fullName: "profile-full-name",
   mobileNumber: "profile-mobile-number",
   barangay: "profile-barangay",
   city: "profile-city",
-  maximumDistance: "profile-maximum-distance",
-  maximumMinutes: "profile-maximum-minutes",
 };
 
 function homeNodeIdForBarangay(barangay: string) {
@@ -74,24 +68,13 @@ export function ProfileSetupPage() {
       fullName: user?.displayName ?? "",
     },
   );
-  const [, setCommuteMinutes] = usePersistentState(
-    userStorageKey(COMMUTE_MINUTES_KEY, user?.id),
-    DEFAULT_PROFILE_DETAILS.maximumMinutes,
-  );
   const [errors, setErrors] = useState<
     Partial<Record<ProfileField, string>>
   >({});
   const [serverError, setServerError] = useState("");
   const [saving, setSaving] = useState(false);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
-  const {
-    barangay,
-    city,
-    fullName,
-    maximumDistance,
-    maximumMinutes,
-    mobileNumber,
-  } = profile;
+  const { barangay, city, fullName, mobileNumber } = profile;
 
   useEffect(() => {
     if (import.meta.env.MODE === "test") return;
@@ -103,8 +86,6 @@ export function ProfileSetupPage() {
         mobileNumber: string;
         barangay: string;
         city: string;
-        maximumDistanceKm: number;
-        maximumMinutes: number;
       };
     }>("/profile")
       .then(({ profile: savedProfile }) => {
@@ -114,17 +95,14 @@ export function ProfileSetupPage() {
           mobileNumber: savedProfile.mobileNumber,
           barangay: savedProfile.barangay,
           city: savedProfile.city,
-          maximumDistance: String(savedProfile.maximumDistanceKm),
-          maximumMinutes: String(savedProfile.maximumMinutes),
         });
-        setCommuteMinutes(String(savedProfile.maximumMinutes));
       })
       .catch(() => {});
 
     return () => {
       active = false;
     };
-  }, [setCommuteMinutes, setProfile, user?.id]);
+  }, [setProfile, user?.id]);
 
   function updateProfile(
     field: keyof typeof profile,
@@ -158,12 +136,6 @@ export function ProfileSetupPage() {
       ...(city.trim().toLowerCase() !== "angeles city"
         ? { city: "JobFinder currently supports Angeles City." }
         : {}),
-      ...(Number(maximumDistance) < 1 || Number(maximumDistance) > 100
-        ? { maximumDistance: "Choose a distance from 1 to 100 km." }
-        : {}),
-      ...(Number(maximumMinutes) < 5 || Number(maximumMinutes) > 180
-        ? { maximumMinutes: "Choose a travel time from 5 to 180 minutes." }
-        : {}),
     };
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
@@ -180,13 +152,10 @@ export function ProfileSetupPage() {
           mobileNumber: normalizedMobile,
           barangay,
           city,
-          maximumDistanceKm: Number(maximumDistance),
-          maximumMinutes: Number(maximumMinutes),
           homeNodeId: homeNodeIdForBarangay(barangay),
           preferredWorkTypes: [],
         }),
       });
-      setCommuteMinutes(maximumMinutes);
       window.dispatchEvent(new Event("jobfinder:profile-updated"));
       navigate(`/onboarding/skills?${skillsSearch.toString()}`);
     } catch (error) {
@@ -341,7 +310,7 @@ export function ProfileSetupPage() {
                 <MapPin size={21} aria-hidden="true" />
               </span>
               <div>
-                <p className="kicker">Commute Starting Point</p>
+                <p className="kicker">Location for Job Matching</p>
                 <h2 id="home-location-heading">Home Location</h2>
               </div>
             </div>
@@ -401,93 +370,6 @@ export function ProfileSetupPage() {
                 <strong>Location ready</strong>
                 {barangay || "Your barangay"}, {city || "your city"}
               </span>
-            </div>
-          </section>
-
-          <section
-            aria-labelledby="commute-preference-heading"
-            className="content-card onboarding-card"
-          >
-            <div className="onboarding-card__header">
-              <span className="icon-tile icon-tile--soft">
-                <Navigation size={21} aria-hidden="true" />
-              </span>
-              <div>
-                <h2 id="commute-preference-heading">Commute Preference</h2>
-                <p className="onboarding-card__caption">
-                  Set the travel limits used in your recommendations.
-                </p>
-              </div>
-            </div>
-
-            <div className="form-grid form-grid--2 onboarding-fields">
-              <label className="field">
-                <span className="field-label">Maximum distance</span>
-                <span className="onboarding-inline-control">
-                  <input
-                    aria-describedby={
-                      errors.maximumDistance
-                        ? "profile-maximum-distance-error"
-                        : undefined
-                    }
-                    aria-invalid={Boolean(errors.maximumDistance)}
-                    className="input"
-                    id={profileFieldIds.maximumDistance}
-                    inputMode="numeric"
-                    max={100}
-                    min={1}
-                    onChange={(event) =>
-                      updateProfile("maximumDistance", event.target.value)
-                    }
-                    required
-                    type="number"
-                    value={maximumDistance}
-                  />
-                  <span>km</span>
-                </span>
-                {errors.maximumDistance ? (
-                  <span
-                    className="field-error"
-                    id="profile-maximum-distance-error"
-                  >
-                    {errors.maximumDistance}
-                  </span>
-                ) : null}
-              </label>
-              <label className="field">
-                <span className="field-label">Maximum travel time</span>
-                <span className="onboarding-inline-control">
-                  <input
-                    aria-describedby={
-                      errors.maximumMinutes
-                        ? "profile-maximum-minutes-error"
-                        : undefined
-                    }
-                    aria-invalid={Boolean(errors.maximumMinutes)}
-                    className="input"
-                    id={profileFieldIds.maximumMinutes}
-                    inputMode="numeric"
-                    max={180}
-                    min={5}
-                    onChange={(event) =>
-                      updateProfile("maximumMinutes", event.target.value)
-                    }
-                    required
-                    step={5}
-                    type="number"
-                    value={maximumMinutes}
-                  />
-                  <span>min</span>
-                </span>
-                {errors.maximumMinutes ? (
-                  <span
-                    className="field-error"
-                    id="profile-maximum-minutes-error"
-                  >
-                    {errors.maximumMinutes}
-                  </span>
-                ) : null}
-              </label>
             </div>
           </section>
 

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   ArrowRight,
   Check,
@@ -19,7 +19,6 @@ import {
   SAVED_JOB_IDS_KEY,
 } from "../features/jobs/saved-jobs";
 import {
-  COMMUTE_MINUTES_KEY,
   DEFAULT_PROFILE_DETAILS,
   DEFAULT_PROFILE_SKILLS,
   PROFILE_DETAILS_KEY,
@@ -35,8 +34,6 @@ type HomeApiProfile = {
   mobileNumber: string;
   barangay: string;
   city: string;
-  maximumDistanceKm: number;
-  maximumMinutes: number;
   preferredWorkTypes: string[];
   skills: { name: string }[];
 };
@@ -49,9 +46,7 @@ function hasRequiredProfileDetails(profile: typeof DEFAULT_PROFILE_DETAILS) {
     profile.fullName.trim().length >= 2 &&
     /^(?:\+639|09)\d{9}$/.test(mobileNumber) &&
     Boolean(profile.barangay.trim()) &&
-    Boolean(profile.city.trim()) &&
-    Number(profile.maximumDistance) > 0 &&
-    Number(profile.maximumMinutes) > 0
+    Boolean(profile.city.trim())
   );
 }
 
@@ -82,10 +77,6 @@ function JobSeekerHome({
   const [profileDetails, setProfileDetails] = usePersistentState(
     userStorageKey(PROFILE_DETAILS_KEY, userId),
     DEFAULT_PROFILE_DETAILS,
-  );
-  const [commuteMinutes, setCommuteMinutes] = usePersistentState(
-    userStorageKey(COMMUTE_MINUTES_KEY, userId),
-    "35",
   );
   const [profileSkills, setProfileSkills] = usePersistentState<string[]>(
     userStorageKey(PROFILE_SKILLS_KEY, userId),
@@ -129,10 +120,7 @@ function JobSeekerHome({
           mobileNumber: profile.mobileNumber,
           barangay: profile.barangay,
           city: profile.city,
-          maximumDistance: String(profile.maximumDistanceKm),
-          maximumMinutes: String(profile.maximumMinutes),
         });
-        setCommuteMinutes(String(profile.maximumMinutes));
         setProfileSkills(profile.skills.map((skill) => skill.name));
         setPreferredWorkTypes(profile.preferredWorkTypes);
         setServerProfileComplete(profile.isComplete);
@@ -148,7 +136,6 @@ function JobSeekerHome({
       active = false;
     };
   }, [
-    setCommuteMinutes,
     setProfileDetails,
     setProfileSkills,
     setSavedJobIds,
@@ -161,11 +148,7 @@ function JobSeekerHome({
       ? hasProfileDetails && profileSkills.length > 0
       : serverProfileComplete === true);
   const strongMatchCount = canShowPersonalizedMatch
-    ? allJobs.filter(
-        (job) =>
-          job.fit.overallScore >= 85 &&
-          job.route.estimatedMinutes <= Number(commuteMinutes),
-      ).length
+    ? allJobs.filter((job) => job.fit.overallScore >= 85).length
     : 0;
   const profileSetupHref =
     hasProfileDetails && profileSkills.length === 0
@@ -194,7 +177,7 @@ function JobSeekerHome({
           <h1>Good Morning, {firstName}</h1>
           <p>
             {canShowPersonalizedMatch
-              ? "Find work that fits your skills and commute."
+              ? "Find work that fits your skills and location."
               : "Browse local jobs now, then complete your profile for personalized matches."}
           </p>
         </div>
@@ -227,7 +210,7 @@ function JobSeekerHome({
           <strong>{canShowPersonalizedMatch ? strongMatchCount : "—"}</strong>
           <small>
             {canShowPersonalizedMatch
-              ? "Within your commute limit"
+              ? "85% match or higher"
               : "Complete your profile to see matches"}
           </small>
         </article>
@@ -251,7 +234,7 @@ function JobSeekerHome({
         <section className="dashboard-matches" aria-labelledby="matches-heading">
           <div className="section-heading">
             <div>
-              <p className="kicker">Skill-aware and commute-aware</p>
+              <p className="kicker">Skill-aware and location-aware</p>
               <h2 id="matches-heading">
                 {canShowPersonalizedMatch ? "Best Matches" : "Explore Local Jobs"}
               </h2>
@@ -283,10 +266,6 @@ function JobSeekerHome({
               <h2 id="preferences-heading">Your Matching Preferences</h2>
               <dl>
                 <div>
-                  <dt>Commute limit</dt>
-                  <dd>{commuteMinutes} minutes</dd>
-                </div>
-                <div>
                   <dt>Preferred work types</dt>
                   <dd>
                     {preferredWorkTypes === null
@@ -314,7 +293,7 @@ function JobSeekerHome({
               <p className="kicker">Profile setup</p>
               <h2 id="preferences-heading">Unlock Personalized Matches</h2>
               <p className="preferences-card__message">
-                Add your contact details, home area, commute limit, and skills
+                Add your contact details, home area, and skills
                 before JobFinder calculates match percentages.
               </p>
               <Link className="button button--primary" to={profileSetupHref}>

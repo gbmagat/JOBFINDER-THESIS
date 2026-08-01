@@ -99,6 +99,16 @@ function futureDeadline(days = 30) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
+function assertDistanceOnlyRoute(route) {
+  assert.equal(typeof route.distanceKm, "number");
+  assert.equal("estimatedMinutes" in route, false);
+  assert.equal("accessibilityStatus" in route, false);
+  assert.equal(
+    route.steps.some((step) => "estimatedMinutes" in step),
+    false,
+  );
+}
+
 test("both development demo accounts can sign in", async () => {
   const accounts = [
     { email: demoAccounts.employerEmail, role: "employer" },
@@ -125,12 +135,16 @@ test("both development demo accounts can sign in", async () => {
       assert.equal(profile.response.status, 200);
       assert.equal(profile.body.profile.homeNodeId, "balibago");
       assert.equal(profile.body.profile.skills.length, 10);
+      assert.equal("maximumDistanceKm" in profile.body.profile, false);
+      assert.equal("maximumMinutes" in profile.body.profile, false);
 
       const jobs = await request("/api/jobs", {
         headers: { cookie },
       });
       assert.equal(jobs.response.status, 200);
+      assert.equal(jobs.body.jobs.length, 3);
       assert.equal(typeof jobs.body.jobs[0].fit.overallScore, "number");
+      jobs.body.jobs.forEach((job) => assertDistanceOnlyRoute(job.route));
     }
   }
 });
@@ -143,10 +157,29 @@ test("public jobs never expose a guest match score", async () => {
   assert.equal(result.response.status, 200);
   assert.equal(result.body.jobs.length, 3);
   assert.equal("fit" in result.body.jobs[0], false);
+  result.body.jobs.forEach((job) => assertDistanceOnlyRoute(job.route));
   const directJob = result.body.jobs.find(
     (job) => job.id === "it-support-assistant-lumina-tech",
   );
   assert.equal("ownerId" in directJob.source, false);
+});
+
+test("public jobs stay visible and can be sorted by nearest distance", async () => {
+  const result = await request("/api/jobs?sort=nearest-distance");
+  assert.equal(result.response.status, 200);
+  assert.equal(result.body.jobs.length, 3);
+  assert.deepEqual(
+    result.body.jobs.map((job) => job.id),
+    [
+      "customer-service-associate-clarkconnect",
+      "it-support-assistant-lumina-tech",
+      "junior-web-developer-pixelnorth",
+    ],
+  );
+  assert.deepEqual(
+    result.body.jobs.map((job) => job.route.distanceKm),
+    [3.1, 5.2, 7.8],
+  );
 });
 
 test("an incomplete seeker profile never receives personalized match data", async () => {
@@ -176,6 +209,7 @@ test("an incomplete seeker profile never receives personalized match data", asyn
     { headers },
   );
   assert.equal(incompleteRoute.body.personalized, false);
+  assertDistanceOnlyRoute(incompleteRoute.body.route);
 
   await request("/api/profile", {
     method: "PUT",
@@ -185,8 +219,6 @@ test("an incomplete seeker profile never receives personalized match data", asyn
       mobileNumber: "09171234567",
       barangay: "Balibago",
       city: "Angeles City",
-      maximumDistanceKm: 10,
-      maximumMinutes: 35,
       homeNodeId: "balibago",
       preferredWorkTypes: [],
     }),
@@ -194,9 +226,13 @@ test("an incomplete seeker profile never receives personalized match data", asyn
 
   const completeProfile = await request("/api/profile", { headers });
   assert.equal(completeProfile.body.profile.isComplete, true);
+  assert.equal("maximumDistanceKm" in completeProfile.body.profile, false);
+  assert.equal("maximumMinutes" in completeProfile.body.profile, false);
 
   const completeJobs = await request("/api/jobs", { headers });
+  assert.equal(completeJobs.body.jobs.length, 3);
   assert.equal(typeof completeJobs.body.jobs[0].fit.overallScore, "number");
+  completeJobs.body.jobs.forEach((job) => assertDistanceOnlyRoute(job.route));
 });
 
 test("protected account routes require a signed-in job seeker", async () => {
@@ -224,8 +260,6 @@ test("a seeker profile enables explainable ontology and location scores", async 
       mobileNumber: "09171234567",
       barangay: "Balibago",
       city: "Angeles City",
-      maximumDistanceKm: 10,
-      maximumMinutes: 35,
       homeNodeId: "balibago",
       preferredWorkTypes: ["Full-time"],
     }),
@@ -249,7 +283,15 @@ test("a seeker profile enables explainable ontology and location scores", async 
   assert.equal(result.body.job.fit.weights.skill, 0.7);
   assert.equal(result.body.job.fit.weights.location, 0.3);
   assert.ok(result.body.job.fit.relatedSkills.length >= 1);
-  assert.equal(result.body.job.fit.route.accessibilityStatus, "within-limit");
+  assertDistanceOnlyRoute(result.body.job.fit.route);
+
+  const route = await request(
+    "/api/jobs/it-support-assistant-lumina-tech/route",
+    { headers },
+  );
+  assert.equal(route.response.status, 200);
+  assert.equal(route.body.personalized, true);
+  assertDistanceOnlyRoute(route.body.route);
 });
 
 test("profile skills keep C, C sharp, and C plus plus distinct", async () => {
@@ -330,8 +372,6 @@ test("an employer can publish a job and review its submitted application", async
       mobileNumber: "09175550123",
       barangay: "Balibago",
       city: "Angeles City",
-      maximumDistanceKm: 10,
-      maximumMinutes: 35,
       homeNodeId: "balibago",
       preferredWorkTypes: ["Full-time"],
     }),

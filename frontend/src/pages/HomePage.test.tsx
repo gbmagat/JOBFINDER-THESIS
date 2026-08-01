@@ -5,6 +5,11 @@ import {
   AUTH_USER_STORAGE_KEY,
   AuthProvider,
 } from "../features/auth/AuthContext";
+import {
+  PROFILE_DETAILS_KEY,
+  PROFILE_SKILLS_KEY,
+} from "../features/profile/storage";
+import { userStorageKey } from "../lib/storage-keys";
 import { HomePage } from "./HomePage";
 
 vi.mock("../features/jobs/JobCard", () => ({ JobCard: () => null }));
@@ -91,5 +96,47 @@ describe("HomePage job seeker state", () => {
       screen.getByRole("link", { name: "Set Up Your Profile" }),
     ).toHaveAttribute("href", "/onboarding/profile");
     expect(screen.queryByText(/\d+% match/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/commute limit|travel limit|minutes/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("unlocks matches with profile details and skills but no travel limits", () => {
+    const user = {
+      id: "complete-job-seeker",
+      email: "complete@example.com",
+      displayName: "Complete Job Seeker",
+      role: "job-seeker",
+    };
+    window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+    window.localStorage.setItem(
+      userStorageKey(PROFILE_DETAILS_KEY, user.id),
+      JSON.stringify({
+        fullName: "Complete Job Seeker",
+        mobileNumber: "09171234567",
+        barangay: "Balibago",
+        city: "Angeles City",
+      }),
+    );
+    window.localStorage.setItem(
+      userStorageKey(PROFILE_SKILLS_KEY, user.id),
+      JSON.stringify(["Troubleshooting"]),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AuthProvider>
+          <HomePage />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Best Matches" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Personalized ranking")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/commute limit|travel limit|minutes/i),
+    ).not.toBeInTheDocument();
   });
 });

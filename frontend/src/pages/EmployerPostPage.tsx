@@ -828,8 +828,8 @@ export function EmployerPostPage() {
                   </span>
                 </div>
                 <p className="field-hint">
-                  Travel matches use this workplace and the candidate&apos;s
-                  saved travel limit. Exact home addresses stay private.
+                  Location matches use this workplace and the candidate&apos;s
+                  saved home area. Exact home addresses stay private.
                 </p>
               </div>
             </section>

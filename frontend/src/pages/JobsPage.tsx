@@ -15,15 +15,11 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import { useJobs } from "../features/jobs/JobsContext";
 import { JobCard } from "../features/jobs/JobCard";
-import {
-  COMMUTE_MINUTES_KEY,
-  DEFAULT_PROFILE_DETAILS,
-} from "../features/profile/storage";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
 
-type SortOption = "match" | "skill" | "commute" | "newest";
+type SortOption = "match" | "skill" | "distance" | "newest";
 type LocationStatus =
   | "idle"
   | "requesting"
@@ -34,7 +30,6 @@ type LocationStatus =
 type SavedSearch = {
   alerts: boolean;
   barangay: string;
-  commute: string;
   createdAt: string;
   id: string;
   minimumPay: string;
@@ -78,10 +73,6 @@ export function JobsPage() {
   const [selectedWorkTypes, setSelectedWorkTypes] = usePersistentState<
     string[]
   >(userStorageKey(SEARCH_WORK_TYPES_KEY, user?.id), []);
-  const [maxCommute, setMaxCommute] = usePersistentState(
-    userStorageKey(COMMUTE_MINUTES_KEY, user?.id),
-    DEFAULT_PROFILE_DETAILS.maximumMinutes,
-  );
   const [minimumPay, setMinimumPay] = usePersistentState(
     userStorageKey(SEARCH_MINIMUM_PAY_KEY, user?.id),
     "",
@@ -106,7 +97,7 @@ export function JobsPage() {
   const [sortBy, setSortBy] = useState<SortOption>("match");
   const visibleSortBy: SortOption = canShowPersonalizedMatch
     ? sortBy
-    : sortBy === "commute" || sortBy === "newest"
+    : sortBy === "distance" || sortBy === "newest"
       ? sortBy
       : "newest";
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -138,7 +129,6 @@ export function JobsPage() {
   const results = useMemo(() => {
     const query = activeQuery.trim().toLowerCase();
     const pay = Number(minimumPay) || 0;
-    const commute = Number(maxCommute) || Number.POSITIVE_INFINITY;
 
     const filtered = allJobs.filter((job) => {
       const isOpen =
@@ -156,7 +146,6 @@ export function JobsPage() {
         .toLowerCase();
 
       const matchesQuery = !query || searchable.includes(query);
-      const matchesCommute = job.route.estimatedMinutes <= commute;
       const matchesPay = job.salary.maximumPhp >= pay;
       const matchesWorkType =
         !selectedWorkTypes.length ||
@@ -175,7 +164,6 @@ export function JobsPage() {
       return (
         isOpen &&
         matchesQuery &&
-        matchesCommute &&
         matchesPay &&
         matchesWorkType &&
         matchesTransport &&
@@ -188,10 +176,8 @@ export function JobsPage() {
       switch (visibleSortBy) {
         case "skill":
           return second.fit.skillScore - first.fit.skillScore;
-        case "commute":
-          return (
-            first.route.estimatedMinutes - second.route.estimatedMinutes
-          );
+        case "distance":
+          return first.route.distanceKm - second.route.distanceKm;
         case "newest":
           return (
             new Date(second.postedAt).getTime() -
@@ -206,7 +192,6 @@ export function JobsPage() {
     activeQuery,
     allJobs,
     barangay,
-    maxCommute,
     minimumPay,
     schedule,
     selectedWorkTypes,
@@ -243,7 +228,6 @@ export function JobsPage() {
   function clearFilters() {
     setDraftQuery("");
     setSelectedWorkTypes([]);
-    setMaxCommute(DEFAULT_PROFILE_DETAILS.maximumMinutes);
     setMinimumPay("");
     setTransportMode("");
     setBarangay("");
@@ -283,7 +267,6 @@ export function JobsPage() {
     const nextSearch: SavedSearch = {
       alerts: false,
       barangay,
-      commute: maxCommute,
       createdAt: new Date().toISOString(),
       id: `search-${Date.now()}`,
       minimumPay,
@@ -294,7 +277,6 @@ export function JobsPage() {
     };
     const signature = JSON.stringify({
       barangay,
-      commute: maxCommute,
       minimumPay,
       query: activeQuery,
       schedule,
@@ -305,7 +287,6 @@ export function JobsPage() {
       (savedSearch) =>
         JSON.stringify({
           barangay: savedSearch.barangay,
-          commute: savedSearch.commute,
           minimumPay: savedSearch.minimumPay,
           query: savedSearch.query,
           schedule: savedSearch.schedule,
@@ -325,7 +306,6 @@ export function JobsPage() {
 
   function applySavedSearch(savedSearch: SavedSearch) {
     setBarangay(savedSearch.barangay);
-    setMaxCommute(savedSearch.commute);
     setMinimumPay(savedSearch.minimumPay);
     setSchedule(savedSearch.schedule);
     setTransportMode(savedSearch.transportMode);
@@ -411,7 +391,7 @@ export function JobsPage() {
                 <option value="match">Best match</option>
               ) : null}
               <option value="newest">Newest</option>
-              <option value="commute">Shortest travel</option>
+              <option value="distance">Nearest distance</option>
             </select>
           </label>
         </div>
@@ -438,20 +418,6 @@ export function JobsPage() {
               Clear
             </button>
           </div>
-
-          <label className="field">
-            <span>Maximum travel time</span>
-            <select
-              value={maxCommute}
-              onChange={(event) => setMaxCommute(event.target.value)}
-            >
-              <option value="20">20 minutes</option>
-              <option value="30">30 minutes</option>
-              <option value="35">35 minutes</option>
-              <option value="40">40 minutes</option>
-              <option value="60">60 minutes</option>
-            </select>
-          </label>
 
           <fieldset className="filter-group">
             <legend>Work type</legend>
@@ -708,7 +674,7 @@ export function JobsPage() {
                   </>
                 ) : null}
                 <option value="newest">Newest</option>
-                <option value="commute">Shortest commute</option>
+                <option value="distance">Nearest distance</option>
               </select>
             </label>
           </div>
@@ -749,8 +715,8 @@ export function JobsPage() {
               </h2>
               <p>
                 {canShowPersonalizedMatch
-                  ? "Comparing skill evidence and commute estimates…"
-                  : "Checking public listings and travel estimates…"}
+                  ? "Comparing skill and location evidence…"
+                  : "Checking available public listings…"}
               </p>
               <div className="job-loading-skeleton" aria-hidden="true">
                 <span />
@@ -789,7 +755,7 @@ export function JobsPage() {
                     job={job}
                     showMatch={canShowPersonalizedMatch}
                     showSummary={false}
-                    showTravelFact
+                    showDistanceFact
                   />
                 </div>
               ))}
@@ -801,8 +767,7 @@ export function JobsPage() {
               </span>
               <h2>No Jobs Match These Filters</h2>
               <p>
-                Try a related skill, raise the commute limit, or clear one of
-                the filters.
+                Try a related skill or clear one of the filters.
               </p>
               <button
                 className="button button--primary"
@@ -832,7 +797,7 @@ export function JobsPage() {
           <div className="map-panel__heading">
             <div>
               <p className="kicker">Map Results</p>
-              <h2>{results.length} Jobs in Range</h2>
+              <h2>{results.length} Jobs Shown</h2>
             </div>
             <button
               className="icon-button"
@@ -864,9 +829,9 @@ export function JobsPage() {
               <LocateFixed size={18} aria-hidden="true" />
               <span>
                 <strong>Location permission granted.</strong>
-                This frontend preview still uses the selected travel limit and
-                reference map. Live coordinates will be used only after the
-                routing service is connected.
+                This frontend preview uses your location with the reference
+                map. Live coordinates will be used after the routing service
+                is connected.
               </span>
             </div>
           ) : null}
@@ -896,11 +861,10 @@ export function JobsPage() {
               <p>
                 Selected job: {selectedJob.title}
                 <br />
-                About {selectedJob.route.distanceKm.toFixed(1)} km or{" "}
-                {selectedJob.route.estimatedMinutes} minutes away.
+                About {selectedJob.route.distanceKm.toFixed(1)} km away.
               </p>
             ) : (
-              <p>No jobs are currently inside the selected travel limit.</p>
+              <p>No jobs match the selected filters.</p>
             )}
           </div>
         </aside>

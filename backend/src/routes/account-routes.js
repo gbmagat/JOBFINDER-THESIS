@@ -6,7 +6,6 @@ import { requireAuth, requireRole } from "../auth.js";
 import { ensureSkill, isJobAvailable, rowToJob } from "../db.js";
 import {
   createId,
-  numberInRange,
   optionalText,
   requiredText,
   sendError,
@@ -30,8 +29,6 @@ function profileResponse(db, userId) {
     mobileNumber: profile.mobile_number,
     barangay: profile.barangay,
     city: profile.city,
-    maximumDistanceKm: profile.maximum_distance_km,
-    maximumMinutes: profile.maximum_minutes,
     homeNodeId: profile.home_node_id,
     preferredWorkTypes: JSON.parse(profile.preferred_work_types_json),
     skills,
@@ -88,30 +85,12 @@ export function createAccountRouter(db, uploadsDirectory) {
     const mobileNumber = optionalText(request.body?.mobileNumber, 30);
     const barangay = requiredText(request.body?.barangay, 100);
     const city = requiredText(request.body?.city, 100) || "Angeles City";
-    const maximumDistanceKm = numberInRange(
-      request.body?.maximumDistanceKm,
-      1,
-      100,
-      null,
-    );
-    const maximumMinutes = numberInRange(
-      request.body?.maximumMinutes,
-      5,
-      240,
-      null,
-    );
     const homeNodeId = requiredText(request.body?.homeNodeId, 80) || "balibago";
     const preferredWorkTypes = stringArray(request.body?.preferredWorkTypes, 5, 40);
     const fields = {};
 
     if (!fullName) fields.fullName = "Enter your full name.";
     if (!barangay) fields.barangay = "Enter your barangay.";
-    if (maximumDistanceKm === null) {
-      fields.maximumDistanceKm = "Enter a distance from 1 to 100 km.";
-    }
-    if (maximumMinutes === null) {
-      fields.maximumMinutes = "Enter a travel limit from 5 to 240 minutes.";
-    }
     if (!db.prepare("SELECT 1 FROM geo_nodes WHERE id = ?").get(homeNodeId)) {
       fields.homeNodeId = "Choose a supported starting area.";
     }
@@ -124,16 +103,13 @@ export function createAccountRouter(db, uploadsDirectory) {
     db.prepare(`
       UPDATE profiles SET
         full_name = ?, mobile_number = ?, barangay = ?, city = ?,
-        maximum_distance_km = ?, maximum_minutes = ?, home_node_id = ?,
-        preferred_work_types_json = ?, updated_at = ?
+        home_node_id = ?, preferred_work_types_json = ?, updated_at = ?
       WHERE user_id = ?
     `).run(
       fullName,
       mobileNumber,
       barangay,
       city,
-      maximumDistanceKm,
-      maximumMinutes,
       homeNodeId,
       JSON.stringify(preferredWorkTypes),
       now,

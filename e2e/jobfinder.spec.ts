@@ -49,11 +49,19 @@ test.describe.serial("JobFinder critical user journeys", () => {
     await expect(
       page.getByRole("heading", { name: "Search Local Jobs" }),
     ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "3 Jobs Found" })).toBeVisible();
     await expect(page.getByText(/\d+% match/i)).toHaveCount(0);
+    await expect(page.getByText(/\b\d+\s*(?:min|minute|minutes)\b/i)).toHaveCount(0);
+    await expect(page.getByText(/Maximum travel time/i)).toHaveCount(0);
+    await expect(page.locator(".job-card")).toHaveCount(3);
+    await expect(
+      page.locator(".job-card").getByText(/\b\d+(?:\.\d+)?\s*km away\b/i),
+    ).toHaveCount(3);
 
     await page.getByRole("link", { name: jobTitle }).first().click();
     await expect(page.getByRole("heading", { name: jobTitle })).toBeVisible();
     await expect(page.getByText(/\d+% overall match/i)).toHaveCount(0);
+    await expect(page.getByText(/\b\d+\s*(?:min|minute|minutes)\b/i)).toHaveCount(0);
 
     await page.getByRole("button", { name: "Sign In to Apply" }).click();
     await expect(
@@ -180,6 +188,17 @@ test.describe.serial("JobFinder critical user journeys", () => {
     await expect(page.locator(".mobile-header")).toBeVisible();
     await expect(page.locator('[aria-label="Primary navigation"]:visible')).toHaveCount(1);
     await expectNoHorizontalOverflow(page);
+
+    await page.goto("/onboarding/profile");
+    await expect(
+      page.getByLabel(/Maximum distance|Maximum travel time|Maximum commute/i),
+    ).toHaveCount(0);
+    await expect(page.getByText(/\b\d+\s*(?:min|minute|minutes)\b/i)).toHaveCount(0);
+
+    await page.goto("/preferences");
+    await expect(page.getByText(/Maximum commute|Travel limit/i)).toHaveCount(0);
+    await expect(page.getByText(/\b\d+\s*(?:min|minute|minutes)\b/i)).toHaveCount(0);
+
     const footer = page.locator("footer").last();
     await footer.scrollIntoViewIfNeeded();
     await expect(footer).toBeVisible();

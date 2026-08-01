@@ -8,9 +8,13 @@ import { createDatabase, upsertDatasetJob } from "../src/db.js";
 import { SEED_JOBS } from "../src/seed-data.js";
 
 function sourceRecord() {
-  return structuredClone(
+  const record = structuredClone(
     SEED_JOBS.find((job) => job.source.origin === "peso-lgu-dataset"),
   );
+  delete record.route.estimatedMinutes;
+  delete record.route.accessibilityStatus;
+  record.route.steps.forEach((step) => delete step.estimatedMinutes);
+  return record;
 }
 
 test("dataset IDs are stable for an organization and external record", () => {
@@ -35,6 +39,7 @@ test("dataset validation rejects incomplete job shapes", () => {
     ["title", (job) => delete job.title],
     ["location.city", (job) => delete job.location.city],
     ["requirements.requiredSkills", (job) => (job.requirements.requiredSkills = [])],
+    ["route.distanceKm", (job) => delete job.route.distanceKm],
     ["route.textSummary", (job) => delete job.route.textSummary],
     ["source.datasetName", (job) => delete job.source.datasetName],
     ["source.applicationTarget", (job) => delete job.source.applicationTarget],
@@ -77,6 +82,25 @@ test("dataset validation enforces contract values and deduplicates skills", () =
     "Java",
     "Customer service",
   ]);
+  assert.equal(typeof normalized.route.distanceKm, "number");
+  assert.equal("estimatedMinutes" in normalized.route, false);
+  assert.equal("accessibilityStatus" in normalized.route, false);
+  assert.equal(
+    normalized.route.steps.some((step) => "estimatedMinutes" in step),
+    false,
+  );
+});
+
+test("dataset validation accepts a long route without time or limit metadata", () => {
+  const record = sourceRecord();
+  record.route.distanceKm = 80;
+  record.route.textSummary = "Estimated 80 km from the reference area.";
+
+  const normalized = validateAndNormalizeDatasetJob(record);
+
+  assert.equal(normalized.route.distanceKm, 80);
+  assert.equal("estimatedMinutes" in normalized.route, false);
+  assert.equal("accessibilityStatus" in normalized.route, false);
 });
 
 test("re-importing a source record updates one stable database row", () => {

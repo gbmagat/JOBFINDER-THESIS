@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   Bus,
-  Clock3,
   Footprints,
   Info,
   MapPin,
@@ -107,7 +106,7 @@ export function RoutePage() {
         </span>
         <h1>Shortest Route to {job.employerName}</h1>
         <p>
-          Starting area used for this estimate: {startingArea}. Destination:{" "}
+          Starting area used for this route: {startingArea}. Destination:{" "}
           {job.location.venue}. No sign in is required to view this reference
           route.
         </p>
@@ -117,7 +116,7 @@ export function RoutePage() {
         <aside className="notice" role="status">
           <Info size={20} aria-hidden="true" />
           <p>
-            {routeError} The listing&apos;s saved reference estimate is shown
+            {routeError} The listing&apos;s saved reference route is shown
             below.
           </p>
         </aside>
@@ -128,11 +127,8 @@ export function RoutePage() {
           <section className="route-map-card" aria-labelledby="route-map-title">
             <div className="route-map-card__heading">
               <div>
-                <p className="kicker">Estimated route</p>
-                <h2 id="route-map-title">
-                  {route.distanceKm.toFixed(1)} km ·{" "}
-                  {route.estimatedMinutes} minutes
-                </h2>
+                <p className="kicker">Route distance</p>
+                <h2 id="route-map-title">{route.distanceKm.toFixed(1)} km</h2>
               </div>
               <span className="source-pill">
                 {modeLabels[route.mode]}
@@ -164,16 +160,8 @@ export function RoutePage() {
                   <span className="route-steps__number">{step.order}</span>
                   <span>
                     <strong>{step.instruction}</strong>
-                    {step.distanceKm || step.estimatedMinutes ? (
-                      <small>
-                        {step.distanceKm
-                          ? `${step.distanceKm.toFixed(1)} km`
-                          : ""}
-                        {step.distanceKm && step.estimatedMinutes ? " · " : ""}
-                        {step.estimatedMinutes
-                          ? `${step.estimatedMinutes} min`
-                          : ""}
-                      </small>
+                    {step.distanceKm ? (
+                      <small>{step.distanceKm.toFixed(1)} km</small>
                     ) : null}
                   </span>
                 </li>
@@ -184,19 +172,13 @@ export function RoutePage() {
 
         <aside className="route-sidebar">
           <section className="content-card">
-            <h2>Travel Summary</h2>
+            <h2>Route Summary</h2>
             <dl className="route-summary-list">
               <div>
                 <dt>
                   <MapPin size={18} aria-hidden="true" /> Distance
                 </dt>
                 <dd>{route.distanceKm.toFixed(1)} km</dd>
-              </div>
-              <div>
-                <dt>
-                  <Clock3 size={18} aria-hidden="true" /> Travel time
-                </dt>
-                <dd>{route.estimatedMinutes} min</dd>
               </div>
               <div>
                 <dt>
@@ -223,7 +205,7 @@ export function RoutePage() {
           <aside className="notice">
             <Info size={20} aria-hidden="true" />
             <p>
-              This is a reference estimate, not live navigation. Confirm
+              This is a reference route, not live navigation. Confirm
               current local road and transport conditions before leaving.
             </p>
           </aside>

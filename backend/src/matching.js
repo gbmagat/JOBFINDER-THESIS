@@ -105,16 +105,11 @@ export function isMatchingProfileComplete(db, profile, userSkills) {
     /^(?:\+639|09)\d{9}$/.test(mobileNumber) &&
     Boolean(String(profile.barangay ?? "").trim()) &&
     Boolean(String(profile.city ?? "").trim());
-  const hasValidLimits =
-    Number.isFinite(profile.maximum_distance_km) &&
-    profile.maximum_distance_km > 0 &&
-    Number.isFinite(profile.maximum_minutes) &&
-    profile.maximum_minutes > 0;
   const hasValidHomeNode = Boolean(
     db.prepare("SELECT 1 FROM geo_nodes WHERE id = ?").get(profile.home_node_id),
   );
 
-  return hasRequiredDetails && hasValidLimits && hasValidHomeNode;
+  return hasRequiredDetails && hasValidHomeNode;
 }
 
 export function getUserMatch(db, userId, job) {
@@ -130,10 +125,7 @@ export function getUserMatch(db, userId, job) {
     return null;
   }
 
-  const route = calculateRoute(db, profile.home_node_id, job.geoNodeId, {
-    maximumDistanceKm: profile.maximum_distance_km,
-    maximumMinutes: profile.maximum_minutes,
-  });
+  const route = calculateRoute(db, profile.home_node_id, job.geoNodeId);
   if (!route) return null;
 
   const skill = calculateSkillMatch(
@@ -156,7 +148,7 @@ export function getUserMatch(db, userId, job) {
     exactSkills: skill.exactSkills,
     relatedSkills: skill.relatedSkills,
     missingSkills: skill.missingSkills,
-    summary: `${exactCount} exact, ${relatedCount} related, and ${missingCount} missing required skills. The route is ${route.accessibilityStatus.replace("-", " ")} for your saved limit.`,
+    summary: `${exactCount} exact, ${relatedCount} related, and ${missingCount} missing required skills. The mapped route is ${route.distanceKm} km from your saved home area.`,
     route,
   };
 }

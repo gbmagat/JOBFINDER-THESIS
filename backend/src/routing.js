@@ -70,37 +70,15 @@ function round(value, digits = 1) {
   return Math.round(value * factor) / factor;
 }
 
-export function calculateDistanceScore(distanceKm, maximumDistanceKm) {
+const DISTANCE_SCORE_SCALE_KM = 10;
+
+export function calculateDistanceScore(distanceKm) {
   if (!Number.isFinite(distanceKm) || distanceKm < 0) return 0;
-  const limit = Math.max(Number(maximumDistanceKm) || 10, 0.1);
-  const normalizedDistance = distanceKm / limit;
+  const normalizedDistance = distanceKm / DISTANCE_SCORE_SCALE_KM;
   return Math.round((1 / (1 + normalizedDistance)) * 100);
 }
 
-export function calculateAccessibilityScore(
-  distanceKm,
-  maximumDistanceKm,
-  estimatedMinutes,
-  maximumMinutes,
-) {
-  if (
-    !Number.isFinite(distanceKm) ||
-    distanceKm < 0 ||
-    !Number.isFinite(estimatedMinutes) ||
-    estimatedMinutes < 0
-  ) {
-    return 0;
-  }
-  const distanceLimit = Math.max(Number(maximumDistanceKm) || 10, 0.1);
-  const timeLimit = Math.max(Number(maximumMinutes) || 35, 1);
-  const strictestRatio = Math.max(
-    distanceKm / distanceLimit,
-    estimatedMinutes / timeLimit,
-  );
-  return Math.round((1 / (1 + strictestRatio)) * 100);
-}
-
-export function calculateRoute(db, originNodeId, destinationNodeId, limits = {}) {
+export function calculateRoute(db, originNodeId, destinationNodeId) {
   const result = shortestPath(db, originNodeId, destinationNodeId);
   if (!result) return null;
 
@@ -113,24 +91,9 @@ export function calculateRoute(db, originNodeId, destinationNodeId, limits = {})
   const distanceKm = round(
     result.edges.reduce((total, edge) => total + edge.distance_km, 0),
   );
-  const estimatedMinutes = Math.round(
-    result.edges.reduce((total, edge) => total + edge.estimated_minutes, 0),
-  );
   const estimatedFarePhp = Math.round(
     result.edges.reduce((total, edge) => total + (edge.fare_php ?? 0), 0),
   );
-  const maximumDistanceKm = Math.max(Number(limits.maximumDistanceKm) || 10, 0.1);
-  const maximumMinutes = Math.max(Number(limits.maximumMinutes) || 35, 1);
-  const limitRatio = Math.max(
-    distanceKm / maximumDistanceKm,
-    estimatedMinutes / maximumMinutes,
-  );
-  const accessibilityStatus =
-    limitRatio <= 1
-      ? "within-limit"
-      : limitRatio <= 1.2
-        ? "near-limit"
-        : "over-limit";
   const firstNode = nodes.get(result.nodeIds[0]);
   const lastNode = nodes.get(result.nodeIds.at(-1));
   const modes = [...new Set(result.edges.map((edge) => edge.mode))];
@@ -153,25 +116,17 @@ export function calculateRoute(db, originNodeId, destinationNodeId, limits = {})
       coordinates,
     },
     distanceKm,
-    estimatedMinutes,
     ...(estimatedFarePhp > 0 ? { estimatedFarePhp } : {}),
     steps: result.edges.map((edge, index) => ({
       order: index + 1,
       instruction: edge.instruction,
       distanceKm: round(edge.distance_km),
-      estimatedMinutes: Math.round(edge.estimated_minutes),
     })),
     textSummary:
       firstNode && lastNode
-        ? `Estimated ${distanceKm} km and ${estimatedMinutes} minutes from ${firstNode.name} to ${lastNode.name}.`
-        : `Estimated ${distanceKm} km and ${estimatedMinutes} minutes.`,
-    accessibilityStatus,
+        ? `The shortest mapped route from ${firstNode.name} to ${lastNode.name} is ${distanceKm} km.`
+        : `The shortest mapped route is ${distanceKm} km.`,
     isEstimate: true,
-    locationScore: calculateAccessibilityScore(
-      distanceKm,
-      maximumDistanceKm,
-      estimatedMinutes,
-      maximumMinutes,
-    ),
+    locationScore: calculateDistanceScore(distanceKm),
   };
 }

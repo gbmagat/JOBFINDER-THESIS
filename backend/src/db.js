@@ -30,6 +30,48 @@ function parse(value, fallback) {
   }
 }
 
+function sanitizeRoute(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  const distanceKm = Number.isFinite(value.distanceKm)
+    ? value.distanceKm
+    : undefined;
+  const steps = Array.isArray(value.steps)
+    ? value.steps.flatMap((step, index) => {
+        if (!step || typeof step !== "object" || Array.isArray(step)) return [];
+        const instruction = String(step.instruction ?? "").trim();
+        if (!instruction || !Number.isFinite(step.distanceKm)) return [];
+        return [{
+          order: Number.isFinite(step.order) ? step.order : index + 1,
+          instruction,
+          distanceKm: step.distanceKm,
+        }];
+      })
+    : [];
+
+  return {
+    ...(typeof value.routeId === "string" ? { routeId: value.routeId } : {}),
+    ...(typeof value.mode === "string" ? { mode: value.mode } : {}),
+    ...(value.geometry && typeof value.geometry === "object"
+      ? { geometry: value.geometry }
+      : {}),
+    ...(distanceKm !== undefined ? { distanceKm } : {}),
+    ...(Number.isFinite(value.estimatedFarePhp)
+      ? { estimatedFarePhp: value.estimatedFarePhp }
+      : {}),
+    steps,
+    ...(distanceKm !== undefined
+      ? { textSummary: `Shortest route distance: ${distanceKm} km.` }
+      : {}),
+    ...(typeof value.isEstimate === "boolean"
+      ? { isEstimate: value.isEstimate }
+      : {}),
+    ...(Number.isFinite(value.locationScore)
+      ? { locationScore: value.locationScore }
+      : {}),
+  };
+}
+
 function createSchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -54,8 +96,6 @@ function createSchema(db) {
       mobile_number TEXT NOT NULL DEFAULT '',
       barangay TEXT NOT NULL DEFAULT '',
       city TEXT NOT NULL DEFAULT 'Angeles City',
-      maximum_distance_km REAL NOT NULL DEFAULT 10,
-      maximum_minutes INTEGER NOT NULL DEFAULT 35,
       home_node_id TEXT NOT NULL DEFAULT 'balibago',
       preferred_work_types_json TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL
@@ -90,7 +130,6 @@ function createSchema(db) {
       from_node_id TEXT NOT NULL REFERENCES geo_nodes(id) ON DELETE CASCADE,
       to_node_id TEXT NOT NULL REFERENCES geo_nodes(id) ON DELETE CASCADE,
       distance_km REAL NOT NULL CHECK (distance_km >= 0),
-      estimated_minutes REAL NOT NULL CHECK (estimated_minutes >= 0),
       mode TEXT NOT NULL,
       fare_php REAL,
       instruction TEXT NOT NULL,
@@ -205,6 +244,25 @@ function createSchema(db) {
   if (!jobColumns.has("opening_count")) {
     db.exec("ALTER TABLE jobs ADD COLUMN opening_count INTEGER NOT NULL DEFAULT 1 CHECK (opening_count >= 1)");
   }
+
+  const geoEdgeColumns = new Set(
+    db
+      .prepare("PRAGMA table_info(geo_edges)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (geoEdgeColumns.has("estimated_minutes")) {
+    db.exec("ALTER TABLE geo_edges DROP COLUMN estimated_minutes");
+  }
+
+  const updateRoute = db.prepare("UPDATE jobs SET route_json = ? WHERE id = ?");
+  const sanitizeStoredRoutes = db.transaction(() => {
+    for (const row of db.prepare("SELECT id, route_json FROM jobs").all()) {
+      const cleaned = json(sanitizeRoute(parse(row.route_json, {})));
+      if (cleaned !== row.route_json) updateRoute.run(cleaned, row.id);
+    }
+  });
+  sanitizeStoredRoutes();
 }
 
 export function skillId(name) {
@@ -296,9 +354,8 @@ function seedGeography(db) {
   `);
   const insertEdge = db.prepare(`
     INSERT OR REPLACE INTO geo_edges (
-      from_node_id, to_node_id, distance_km, estimated_minutes,
-      mode, fare_php, instruction
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      from_node_id, to_node_id, distance_km, mode, fare_php, instruction
+    ) VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   const transaction = db.transaction(() => {
@@ -312,7 +369,6 @@ function seedGeography(db) {
         edge[2],
         edge[3],
         edge[4],
-        edge[5],
         `Travel from ${nodeNames.get(edge[1])} toward ${nodeNames.get(edge[0])}.`,
       );
     }
@@ -351,7 +407,7 @@ export function insertJob(db, job, ownerId = null, status = "active") {
       postedAt: job.postedAt ?? now,
       closingAt: job.closingAt ?? null,
       requirementsJson: json(job.requirements),
-      routeJson: json(job.route),
+      routeJson: json(sanitizeRoute(job.route)),
       sourceJson: json(job.source),
       tagsJson: json(job.tags ?? []),
       geoNodeId: job.geoNodeId ?? null,
@@ -415,7 +471,7 @@ export function upsertDatasetJob(db, job) {
       postedAt: job.postedAt ?? now,
       closingAt: job.closingAt ?? null,
       requirementsJson: json(job.requirements),
-      routeJson: json(job.route),
+      routeJson: json(sanitizeRoute(job.route)),
       sourceJson: json(job.source),
       tagsJson: json(job.tags ?? []),
       geoNodeId: job.geoNodeId ?? null,
@@ -571,9 +627,8 @@ function seedDemoAccounts(db, accounts) {
     db.prepare(`
       INSERT INTO profiles
         (user_id, full_name, mobile_number, barangay, city,
-         maximum_distance_km, maximum_minutes, home_node_id,
-         preferred_work_types_json, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         home_node_id, preferred_work_types_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO NOTHING
     `).run(
       seekerId,
@@ -581,8 +636,6 @@ function seedDemoAccounts(db, accounts) {
       "0917 123 4567",
       "Balibago",
       "Angeles City",
-      10,
-      35,
       "balibago",
       json(["Full-time", "Hybrid"]),
       now,
@@ -627,7 +680,7 @@ export function rowToJob(row) {
     postedAt: row.posted_at,
     closingAt: row.closing_at ?? undefined,
     requirements: parse(row.requirements_json, {}),
-    route: parse(row.route_json, {}),
+    route: sanitizeRoute(parse(row.route_json, {})),
     source: parse(row.source_json, {}),
     tags: parse(row.tags_json, []),
     status: row.status,

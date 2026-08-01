@@ -180,24 +180,20 @@ function toJobListing(
       routeId: `route-${post.id}`,
       mode: "public-transport",
       distanceKm: 5.5,
-      estimatedMinutes: 22,
       estimatedFarePhp: 28,
       steps: [
         {
           order: 1,
           instruction: `Travel from your saved home area toward ${post.barangay}.`,
           distanceKm: 5,
-          estimatedMinutes: 17,
         },
         {
           order: 2,
           instruction: `Continue to the employer's workplace in ${post.barangay}.`,
           distanceKm: 0.5,
-          estimatedMinutes: 5,
         },
       ],
-      textSummary: `Estimated 5.5 km and 22 minutes from the saved home area to ${post.barangay}, Angeles City. Confirm the route before travelling.`,
-      accessibilityStatus: "within-limit",
+      textSummary: `The mapped route from the saved home area to ${post.barangay}, Angeles City is 5.5 km. Confirm the route before travelling.`,
       isEstimate: true,
     },
     source: {

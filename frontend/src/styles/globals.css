@@ -4925,20 +4925,6 @@ ol {
   display: grid;
 }
 
-.onboarding-inline-control {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--jf-space-8);
-}
-
-.onboarding-inline-control > span {
-  min-width: 2.25rem;
-  color: inherit;
-  font-size: var(--text-sm);
-  font-weight: 750;
-}
-
 .onboarding-actions {
   position: sticky;
   z-index: 5;

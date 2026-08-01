@@ -12,11 +12,7 @@ import {
 } from "../src/db.js";
 import { calculateSkillMatch, getUserMatch } from "../src/matching.js";
 import { SEED_JOBS } from "../src/seed-data.js";
-import {
-  calculateAccessibilityScore,
-  calculateDistanceScore,
-  calculateRoute,
-} from "../src/routing.js";
+import { calculateDistanceScore, calculateRoute } from "../src/routing.js";
 
 let db;
 const demoAccounts = {
@@ -55,27 +51,22 @@ test("skill IDs preserve punctuation distinctions and ignore case", () => {
   assert.notEqual(skillId("C#"), skillId("C++"));
 });
 
-test("distance score normalizes the Dijkstra distance against the saved limit", () => {
-  assert.equal(calculateDistanceScore(0, 10), 100);
-  assert.equal(calculateDistanceScore(10, 10), 50);
-  assert.equal(calculateDistanceScore(20, 10), 33);
+test("distance score decreases as the Dijkstra route gets farther", () => {
+  assert.equal(calculateDistanceScore(0), 100);
+  assert.equal(calculateDistanceScore(10), 50);
+  assert.equal(calculateDistanceScore(20), 33);
+  assert.ok(calculateDistanceScore(1) > calculateDistanceScore(10));
 });
 
-test("accessibility score uses the stricter distance or time limit ratio", () => {
-  assert.equal(calculateDistanceScore(1, 10), 91);
-  assert.equal(calculateAccessibilityScore(1, 10, 120, 30), 20);
-  assert.equal(calculateAccessibilityScore(10, 10, 30, 30), 50);
-  assert.equal(calculateAccessibilityScore(20, 10, 15, 30), 33);
-});
-
-test("Dijkstra returns a textual, estimated route without exposing a home address", () => {
-  const route = calculateRoute(db, "balibago", "marquee", {
-    maximumDistanceKm: 10,
-    maximumMinutes: 35,
-  });
+test("Dijkstra returns a distance-only route without exposing a home address", () => {
+  const route = calculateRoute(db, "balibago", "marquee");
   assert.equal(route.distanceKm, 7.8);
-  assert.equal(route.estimatedMinutes, 27);
-  assert.equal(route.accessibilityStatus, "within-limit");
+  assert.equal("estimatedMinutes" in route, false);
+  assert.equal("accessibilityStatus" in route, false);
+  assert.equal(
+    route.steps.some((step) => "estimatedMinutes" in step),
+    false,
+  );
   assert.equal(route.isEstimate, true);
   assert.match(route.textSummary, /Balibago/);
 });
@@ -109,25 +100,7 @@ test("Dijkstra handles indirect, reverse, same-location, and unreachable routes"
   assert.equal(calculateRoute(db, "unknown", "balibago"), null);
 });
 
-test("route status boundaries and the overall 70/30 arithmetic stay explicit", () => {
-  const within = calculateRoute(db, "balibago", "nepo-center", {
-    maximumDistanceKm: 5.2,
-    maximumMinutes: 18,
-  });
-  assert.equal(within.accessibilityStatus, "within-limit");
-
-  const near = calculateRoute(db, "balibago", "nepo-center", {
-    maximumDistanceKm: 5,
-    maximumMinutes: 18,
-  });
-  assert.equal(near.accessibilityStatus, "near-limit");
-
-  const over = calculateRoute(db, "balibago", "nepo-center", {
-    maximumDistanceKm: 4,
-    maximumMinutes: 18,
-  });
-  assert.equal(over.accessibilityStatus, "over-limit");
-
+test("distance-only routing and the overall 70/30 arithmetic stay explicit", () => {
   const seeker = db
     .prepare("SELECT id FROM users WHERE role = 'job-seeker'")
     .get();
@@ -141,6 +114,9 @@ test("route status boundaries and the overall 70/30 arithmetic stay explicit", (
     fit.overallScore,
     Math.round(fit.skillScore * 0.7 + fit.locationScore * 0.3),
   );
+  assert.equal(fit.locationScore, calculateDistanceScore(fit.route.distanceKm));
+  assert.equal("estimatedMinutes" in fit.route, false);
+  assert.equal("accessibilityStatus" in fit.route, false);
 });
 
 test("matching stays unavailable until profile details and skills are complete", () => {

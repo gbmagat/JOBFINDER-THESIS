@@ -1,10 +1,7 @@
 import {
   ArrowLeft,
   BriefcaseBusiness,
-  Check,
   ChevronDown,
-  CircleAlert,
-  Clock3,
   FileText,
   Filter,
   Info,
@@ -43,8 +40,6 @@ type Candidate = {
   skillScore: number;
   locationScore: number;
   distance: string;
-  travelTime: string;
-  withinPreference: boolean;
   exactSkills: string[];
   relatedSkills: { candidate: string; required: string }[];
   missingSkills: string[];
@@ -66,7 +61,6 @@ type EmployerApiJob = {
 };
 
 type EmployerApiFit = {
-  accessibilityStatus: "within-limit" | "near-limit" | "over-limit";
   exactSkills: { label: string }[];
   locationScore: number;
   missingSkills: { label: string }[];
@@ -123,15 +117,13 @@ const itSupportCandidates: Candidate[] = [
     skillScore: 96,
     locationScore: 90,
     distance: "5.2 km",
-    travelTime: "18 min",
-    withinPreference: true,
     exactSkills: ["Troubleshooting", "Windows", "Communication"],
     relatedSkills: [
       { candidate: "Help desk support", required: "Technical support" },
     ],
     missingSkills: [],
     summary:
-      "Matches the main technical skills and is within the saved travel limit.",
+      "Matches the main technical skills and has strong location evidence.",
     initialStatus: "New",
   },
   {
@@ -143,8 +135,6 @@ const itSupportCandidates: Candidate[] = [
     skillScore: 87,
     locationScore: 100,
     distance: "2.8 km",
-    travelTime: "11 min",
-    withinPreference: true,
     exactSkills: ["Troubleshooting", "Communication"],
     relatedSkills: [
       { candidate: "Desktop support", required: "Technical support" },
@@ -164,13 +154,11 @@ const itSupportCandidates: Candidate[] = [
     skillScore: 86,
     locationScore: 86,
     distance: "7.4 km",
-    travelTime: "27 min",
-    withinPreference: true,
     exactSkills: ["Windows", "Technical support", "Communication"],
     relatedSkills: [],
     missingSkills: ["Troubleshooting"],
     summary:
-      "Matches most skills and is within the travel limit. Troubleshooting still needs review.",
+      "Matches most skills and has useful location evidence. Troubleshooting still needs review.",
     initialStatus: "Shortlisted",
   },
   {
@@ -182,8 +170,6 @@ const itSupportCandidates: Candidate[] = [
     skillScore: 78,
     locationScore: 83,
     distance: "9.1 km",
-    travelTime: "34 min",
-    withinPreference: true,
     exactSkills: ["Troubleshooting", "Windows"],
     relatedSkills: [
       { candidate: "Client assistance", required: "Communication" },
@@ -205,15 +191,13 @@ const customerServiceCandidates: Candidate[] = [
     skillScore: 94,
     locationScore: 90,
     distance: "4.8 km",
-    travelTime: "17 min",
-    withinPreference: true,
     exactSkills: ["Customer service", "Active listening", "Spoken English"],
     relatedSkills: [
       { candidate: "CRM notes", required: "Case documentation" },
     ],
     missingSkills: [],
     summary:
-      "Matches the main customer service skills and is within the saved travel limit.",
+      "Matches the main customer service skills and has strong location evidence.",
     initialStatus: "New",
   },
   {
@@ -225,8 +209,6 @@ const customerServiceCandidates: Candidate[] = [
     skillScore: 83,
     locationScore: 90,
     distance: "5.1 km",
-    travelTime: "19 min",
-    withinPreference: true,
     exactSkills: ["Customer service", "Active listening"],
     relatedSkills: [
       { candidate: "Retail issue logs", required: "Case documentation" },
@@ -283,8 +265,6 @@ function submittedApplicationToCandidate(
     skillScore: job?.fit.skillScore ?? 0,
     locationScore: job?.fit.locationScore ?? 0,
     distance: route ? `${route.distanceKm} km` : "Not available",
-    travelTime: route ? `${route.estimatedMinutes} min` : "Not available",
-    withinPreference: route?.accessibilityStatus !== "over-limit",
     exactSkills: job?.fit.exactSkills.map((skill) => skill.label) ?? [],
     relatedSkills:
       job?.fit.relatedSkills.map((skill) => ({
@@ -335,10 +315,6 @@ function apiApplicationToCandidate(
     skillScore: fit?.skillScore ?? 0,
     locationScore: fit?.locationScore ?? 0,
     distance: "Not available",
-    travelTime: "Not available",
-    withinPreference: Boolean(
-      fit && fit.accessibilityStatus !== "over-limit",
-    ),
     exactSkills: fit?.exactSkills.map((skill) => skill.label) ?? [],
     relatedSkills:
       fit?.relatedSkills.map((skill) => ({
@@ -683,7 +659,7 @@ export function CandidateMatchesPage() {
           <span className="eyebrow">Candidate Matching</span>
           <h1>Review Applicants with Clear Evidence</h1>
           <p>
-            Skills count for 70% and travel distance for 30%.
+            Skills count for 70% and location evidence for 30%.
             <br />
             Scores support people reviewing applications; they never decide
             who is hired.
@@ -722,7 +698,7 @@ export function CandidateMatchesPage() {
                 <Sparkles aria-hidden="true" />
                 <span>
           <strong>How Ranking Works</strong>
-                  Skills 70% · travel 30% · human review required
+                  Skills 70% · location 30% · human review required
                 </span>
               </summary>
               <div className="candidate-formula" aria-label="Ranking formula">
@@ -858,7 +834,7 @@ export function CandidateMatchesPage() {
                       </div>
                     </div>
                     <div>
-                      <span>Travel match</span>
+                      <span>Location match</span>
                       <strong>{candidate.locationScore}%</strong>
                       <div
                         className="progress-track"
@@ -878,9 +854,7 @@ export function CandidateMatchesPage() {
                   )}
 
                   <p className="candidate-card__reason">
-                    {isTestMode && candidate.withinPreference
-                      ? "Strong skill evidence and travel within the saved 35-minute limit."
-                      : candidate.summary}
+                    {candidate.summary}
                   </p>
 
                   <details className="candidate-evidence">
@@ -935,29 +909,6 @@ export function CandidateMatchesPage() {
                             <dd>
                               <MapPin aria-hidden="true" />
                               {candidate.distance}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Estimated travel time</dt>
-                            <dd>
-                              <Clock3 aria-hidden="true" />
-                              {candidate.travelTime}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Travel preference</dt>
-                            <dd>
-                              {candidate.withinPreference ? (
-                                <>
-                                  <Check aria-hidden="true" />
-                                  Within saved limit
-                                </>
-                              ) : (
-                                <>
-                                  <CircleAlert aria-hidden="true" />
-                                  Beyond saved limit
-                                </>
-                              )}
                             </dd>
                           </div>
                         </dl>

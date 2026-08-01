@@ -304,18 +304,18 @@ export function JobDetailPage() {
                   {currency.format(job.salary.minimumPhp)}–
                   {currency.format(job.salary.maximumPhp)}
                 </span>
-                <span>{job.route.estimatedMinutes} min estimated travel</span>
+                <span>{job.route.distanceKm.toFixed(1)} km from home area</span>
               </div>
             </div>
           </header>
 
           <Link
-            aria-label={`View the estimated ${job.route.estimatedMinutes}-minute travel route`}
+            aria-label={`View the ${job.route.distanceKm.toFixed(1)} kilometer route`}
             className="button button--secondary job-route-action"
             to="route"
           >
             <Navigation size={18} aria-hidden="true" />
-            View Travel Details
+            View Route Details
           </Link>
 
           {canShowPersonalizedMatch ? (
@@ -328,8 +328,8 @@ export function JobDetailPage() {
                   <strong>{job.fit.skillScore}%</strong>
                 </div>
                 <div>
-                  <span>Estimated travel</span>
-                  <strong>{job.route.estimatedMinutes} min</strong>
+                  <span>Location match</span>
+                  <strong>{job.fit.locationScore}%</strong>
                 </div>
               </div>
               <p>See the simple reasons below before deciding.</p>
@@ -477,7 +477,7 @@ export function JobDetailPage() {
               ? `${job.fit.overallScore}% match`
               : job.employmentType}
           </strong>
-          <span>{job.route.estimatedMinutes} min estimated travel</span>
+          <span>{job.route.distanceKm.toFixed(1)} km from home area</span>
         </div>
         <button
           className="button button--primary"

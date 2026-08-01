@@ -102,11 +102,11 @@ export function createPublicRouter(db) {
 
     if (sort === "best-match" && request.user?.role === "job-seeker") {
       jobs.sort((left, right) => (right.fit?.overallScore ?? -1) - (left.fit?.overallScore ?? -1));
-    } else if (sort === "shortest-commute") {
+    } else if (sort === "distance" || sort === "nearest-distance") {
       jobs.sort(
         (left, right) =>
-          (left.fit?.route.estimatedMinutes ?? left.job.route.estimatedMinutes) -
-          (right.fit?.route.estimatedMinutes ?? right.job.route.estimatedMinutes),
+          (left.fit?.route.distanceKm ?? left.job.route.distanceKm) -
+          (right.fit?.route.distanceKm ?? right.job.route.distanceKm),
       );
     }
 
@@ -134,10 +134,7 @@ export function createPublicRouter(db) {
     const fit = matchForRequest(db, request, job);
     const route =
       fit?.route ??
-      calculateRoute(db, "balibago", job.geoNodeId, {
-        maximumDistanceKm: 10,
-        maximumMinutes: 35,
-      }) ??
+      calculateRoute(db, "balibago", job.geoNodeId) ??
       job.route;
     const { locationScore: _locationScore, ...publicRoute } = route;
     response.json({

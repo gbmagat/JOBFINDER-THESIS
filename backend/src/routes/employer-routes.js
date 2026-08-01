@@ -90,11 +90,8 @@ function employerJob(job) {
 function candidateMatch(db, applicantId, job) {
   const fit = getUserMatch(db, applicantId, job);
   if (!fit) return null;
-  const { route, ...scores } = fit;
-  return {
-    ...scores,
-    accessibilityStatus: route.accessibilityStatus,
-  };
+  const { route: _route, ...scores } = fit;
+  return scores;
 }
 
 function employerApplicationSummary(db, ownerId, jobs) {
@@ -251,10 +248,7 @@ export function createEmployerRouter(db) {
     const employerName = company?.company_name || request.user.display_name;
     const now = new Date().toISOString();
     const id = `${createSlug(title) || "job"}-${createId("post").slice(-8)}`;
-    const route = calculateRoute(db, "balibago", geoNodeId, {
-      maximumDistanceKm: 10,
-      maximumMinutes: 35,
-    });
+    const route = calculateRoute(db, "balibago", geoNodeId);
     const job = {
       id,
       geoNodeId,

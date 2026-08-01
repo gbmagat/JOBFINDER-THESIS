@@ -26,7 +26,6 @@ export const GEO_EDGES = [
     "balibago",
     "nepo-center",
     5.2,
-    18,
     "public-transport",
     26,
     "Take local public transport from Balibago toward Nepo Center.",
@@ -35,7 +34,6 @@ export const GEO_EDGES = [
     "balibago",
     "balibago-business",
     3.1,
-    38,
     "walk",
     0,
     "Follow the main pedestrian route to Balibago Business Center.",
@@ -44,7 +42,6 @@ export const GEO_EDGES = [
     "balibago",
     "marquee",
     7.8,
-    27,
     "public-transport",
     32,
     "Take local public transport from Balibago toward Marquee.",
@@ -53,7 +50,6 @@ export const GEO_EDGES = [
     "nepo-center",
     "marquee",
     4.4,
-    16,
     "public-transport",
     24,
     "Take local public transport from Nepo Center toward Marquee.",
@@ -116,32 +112,27 @@ export const SEED_JOBS = [
       routeId: "route-balibago-nepo-public-transport",
       mode: "public-transport",
       distanceKm: 5.2,
-      estimatedMinutes: 18,
       estimatedFarePhp: 26,
       steps: [
         {
           order: 1,
           instruction: "Walk to the Balibago transport stop.",
           distanceKm: 0.3,
-          estimatedMinutes: 4,
         },
         {
           order: 2,
           instruction:
             "Take a local public-transport service toward Sto. Rosario or Nepo Center.",
           distanceKm: 4.6,
-          estimatedMinutes: 11,
         },
         {
           order: 3,
           instruction: "Walk from the drop-off point to Nepo Center.",
           distanceKm: 0.3,
-          estimatedMinutes: 3,
         },
       ],
       textSummary:
-        "Estimated 5.2 km and 18 minutes from Balibago using local public transport.",
-      accessibilityStatus: "within-limit",
+        "The mapped route from Balibago is 5.2 km using local public transport.",
       isEstimate: true,
     },
     source: {
@@ -210,24 +201,20 @@ export const SEED_JOBS = [
       routeId: "route-balibago-walk",
       mode: "walk",
       distanceKm: 3.1,
-      estimatedMinutes: 38,
       steps: [
         {
           order: 1,
           instruction: "Follow the main pedestrian route toward Balibago.",
           distanceKm: 2.6,
-          estimatedMinutes: 31,
         },
         {
           order: 2,
           instruction: "Continue to Balibago Business Center.",
           distanceKm: 0.5,
-          estimatedMinutes: 7,
         },
       ],
       textSummary:
-        "Estimated 3.1 km and 38 minutes on foot to Balibago Business Center.",
-      accessibilityStatus: "near-limit",
+        "The mapped walking route to Balibago Business Center is 3.1 km.",
       isEstimate: true,
     },
     source: {
@@ -297,31 +284,26 @@ export const SEED_JOBS = [
       routeId: "route-balibago-marquee-public-transport",
       mode: "public-transport",
       distanceKm: 7.8,
-      estimatedMinutes: 27,
       estimatedFarePhp: 32,
       steps: [
         {
           order: 1,
           instruction: "Walk to a transport stop serving Marquee.",
           distanceKm: 0.4,
-          estimatedMinutes: 5,
         },
         {
           order: 2,
           instruction: "Take local public transport toward Marquee.",
           distanceKm: 6.9,
-          estimatedMinutes: 17,
         },
         {
           order: 3,
           instruction: "Walk to Marquee Business Park.",
           distanceKm: 0.5,
-          estimatedMinutes: 5,
         },
       ],
       textSummary:
-        "Estimated 7.8 km and 27 minutes from Balibago using local public transport.",
-      accessibilityStatus: "near-limit",
+        "The mapped route from Balibago is 7.8 km using local public transport.",
       isEstimate: true,
     },
     source: {

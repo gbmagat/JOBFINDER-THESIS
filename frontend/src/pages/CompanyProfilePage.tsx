@@ -633,7 +633,7 @@ export function CompanyProfilePage() {
               <div className="alert">
                 <Info aria-hidden="true" />
                 <span>
-                  Workplace locations support commute-aware recommendations.
+                  Workplace locations support distance-aware recommendations.
                   JobFinder never treats PESO/LGU datasets as company-owned
                   records.
                 </span>

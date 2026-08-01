@@ -11,7 +11,6 @@ import {
   BriefcaseBusiness,
   Check,
   Clock3,
-  MapPin,
   Plus,
   Search,
   Settings2,
@@ -38,7 +37,6 @@ import {
   SAVED_JOB_IDS_KEY,
 } from "../features/jobs/saved-jobs";
 import {
-  COMMUTE_MINUTES_KEY,
   DEFAULT_PROFILE_DETAILS,
   DEFAULT_PROFILE_SKILLS,
   PROFILE_DETAILS_KEY,
@@ -75,8 +73,6 @@ type ApiProfile = {
   mobileNumber: string;
   barangay: string;
   city: string;
-  maximumDistanceKm: number;
-  maximumMinutes: number;
   homeNodeId: string;
   preferredWorkTypes: string[];
   skills: { name: string }[];
@@ -629,8 +625,6 @@ function ProfileView({
           mobileNumber: profile.mobileNumber,
           barangay: profile.barangay,
           city: profile.city,
-          maximumDistance: String(profile.maximumDistanceKm),
-          maximumMinutes: String(profile.maximumMinutes),
         });
         setProfileSkills(profile.skills.map((skill) => skill.name));
       })
@@ -749,7 +743,7 @@ function ProfileView({
 
         <section className="surface profile-overview-card" aria-labelledby="location-heading">
           <header className="surface__header">
-            <h2 id="location-heading">Home Area and Travel</h2>
+            <h2 id="location-heading">Home Area</h2>
           </header>
           <div className="surface__body">
             <dl className="definition-list">
@@ -759,10 +753,6 @@ function ProfileView({
                   {profileDetails.barangay}, {profileDetails.city}
                 </dd>
               </div>
-              <div className="definition-row">
-                <dt>Travel limit</dt>
-                <dd>{profileDetails.maximumMinutes} minutes</dd>
-              </div>
             </dl>
           </div>
           <footer className="surface__footer">
@@ -770,7 +760,7 @@ function ProfileView({
               className="button button--secondary"
               to="/onboarding/profile?returnTo=/profile"
             >
-              Change Travel Limit
+              Edit Home Area
             </Link>
           </footer>
         </section>
@@ -785,7 +775,7 @@ function ProfileView({
           <div className="surface__body">
             <ul className="profile-privacy__list">
               <li>Contact details are shared only after you apply.</li>
-              <li>Employers see travel evidence, not your exact home point.</li>
+              <li>Employers see location evidence, not your exact home point.</li>
             </ul>
             <p className="profile-privacy__confirmation">
               ✓ Profile is private by default
@@ -820,10 +810,6 @@ function ProfileView({
 
 function PreferencesView() {
   const { user } = useAuth();
-  const [commuteMinutes, setCommuteMinutes] = usePersistentState(
-    userStorageKey(COMMUTE_MINUTES_KEY, user?.id),
-    "35",
-  );
   const [selectedWorkTypes, setSelectedWorkTypes] = usePersistentState<string[]>(
     userStorageKey(WORK_TYPES_KEY, user?.id),
     ["Full-time", "Hybrid"],
@@ -845,7 +831,6 @@ function PreferencesView() {
       .then(({ profile }) => {
         if (!active) return;
         setApiProfile(profile);
-        setCommuteMinutes(String(profile.maximumMinutes));
         setSelectedWorkTypes(profile.preferredWorkTypes);
         setSkills(profile.skills.map((skill) => skill.name));
       })
@@ -856,7 +841,7 @@ function PreferencesView() {
     return () => {
       active = false;
     };
-  }, [setCommuteMinutes, setSelectedWorkTypes, setSkills, user]);
+  }, [setSelectedWorkTypes, setSkills, user]);
 
   function toggleWorkType(workType: string) {
     setSelectedWorkTypes((current) => {
@@ -912,8 +897,6 @@ function PreferencesView() {
             mobileNumber: apiProfile.mobileNumber,
             barangay: apiProfile.barangay,
             city: apiProfile.city,
-            maximumDistanceKm: apiProfile.maximumDistanceKm,
-            maximumMinutes: Number(commuteMinutes),
             homeNodeId: apiProfile.homeNodeId,
             preferredWorkTypes: selectedWorkTypes,
           }),
@@ -938,46 +921,23 @@ function PreferencesView() {
   return (
     <>
       <AccountHeader
-        description="Control the commute, work types, and skills used to rank jobs."
+        description="Control the work types and skills used to rank jobs."
         eyebrow="Private workspace"
         icon={Settings2}
         title="Match Preferences"
       />
 
       <form className="form" onSubmit={handleSubmit}>
-        <section className="surface" aria-labelledby="travel-heading">
+        <section className="surface" aria-labelledby="work-preferences-heading">
           <header className="surface__header">
             <div>
-              <h2 id="travel-heading">Travel and Work Setup</h2>
+              <h2 id="work-preferences-heading">Work Preferences</h2>
               <p className="text-sm muted">
-                These choices filter and rank recommendations.
+                These choices help rank recommendations.
               </p>
             </div>
-            <MapPin size={20} aria-hidden="true" />
           </header>
-          <div className="surface__body form-grid form-grid--2">
-            <label className="field">
-              <span className="field-label">Maximum commute</span>
-              <select
-                className="select"
-                onChange={(event) => {
-                  setCommuteMinutes(event.target.value);
-                  setSaved(false);
-                }}
-                value={commuteMinutes}
-              >
-                <option value="20">20 minutes</option>
-                <option value="30">30 minutes</option>
-                <option value="35">35 minutes</option>
-                <option value="45">45 minutes</option>
-                <option value="60">60 minutes</option>
-              </select>
-              <span className="field-hint">
-                JobFinder still shows jobs outside this limit when you search
-                for them directly.
-              </span>
-            </label>
-
+          <div className="surface__body">
             <fieldset className="filter-group">
               <legend>Preferred work types</legend>
               {workTypeOptions.map((workType) => (
