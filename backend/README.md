@@ -20,9 +20,9 @@ From the project root:
 npm run dev
 ```
 
-The root development command includes the local demo records so the existing
-screens have jobs and an Employer account to use immediately. To start without
-them:
+The root development command includes the local demo jobs. Private demo accounts
+are created only when their credentials are configured in `backend/.env`.
+Start without any demo records using:
 
 ```powershell
 $env:JOBFINDER_SEED_DEMO="false"
@@ -32,12 +32,16 @@ npm run dev
 Direct backend or production-style startup stays safe by default and does not
 seed demo data unless `JOBFINDER_SEED_DEMO` is explicitly enabled.
 
-Development Employer account:
+To configure the private Employer and Job Seeker accounts, copy
+`backend/.env.example` to `backend/.env` and fill in:
 
-- Email: `employer@luminatech.example`
-- Password: `jobfinder-demo`
+- `JOBFINDER_DEMO_EMPLOYER_EMAIL`
+- `JOBFINDER_DEMO_JOB_SEEKER_EMAIL`
+- `JOBFINDER_DEMO_PASSWORD`
 
-Create a Job Seeker account from the Register screen.
+The ignored `.env` file remains on the local computer and is not pushed to
+GitHub. The Job Seeker demo includes a completed profile, travel preferences,
+and skills so personalized matches are available immediately.
 
 The frontend opens through Vite and sends `/api` requests to the backend at
 `http://127.0.0.1:4000`.

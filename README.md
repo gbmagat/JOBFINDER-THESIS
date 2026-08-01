@@ -1,4 +1,4 @@
-# JobFinder — Version 3.0 Connected Frontend & Backend
+# JobFinder — Version 3.1 Demo Updates
 
 This version connects the responsive React frontend to a Node.js, Express, and SQLite backend. It includes authentication, job-seeker profiles, ontology-based skill matching, geographic accessibility scoring, saved jobs, applications, employer job posts, and applicant review.
 
@@ -10,7 +10,7 @@ npm install --prefix backend
 npm run dev
 ```
 
-The frontend opens through Vite and sends API requests to the backend. Development mode includes demo jobs and an Employer account documented in `backend/README.md`.
+The frontend opens through Vite and sends API requests to the backend. Development mode includes demo jobs and supports private Employer and Job Seeker accounts configured through the ignored `backend/.env` file.
 
 ## Checks
 

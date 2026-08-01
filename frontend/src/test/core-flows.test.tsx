@@ -295,7 +295,7 @@ describe("employer application inbox", () => {
       AUTH_USER_STORAGE_KEY,
       JSON.stringify({
         id: "mock-employer@luminatech.example",
-        email: "employer@luminatech.example",
+        email: "employer-test@example.com",
         displayName: "Gabriel Jr. Team",
         role: "employer",
       }),
@@ -377,7 +377,7 @@ describe("employer application inbox", () => {
       AUTH_USER_STORAGE_KEY,
       JSON.stringify({
         id: application.recipientEmployerId,
-        email: "employer@luminatech.example",
+        email: "employer-test@example.com",
         displayName: "Gabriel Jr. Team",
         role: "employer",
       }),

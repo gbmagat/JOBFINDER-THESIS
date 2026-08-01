@@ -388,24 +388,31 @@ function seedJobs(db) {
   transaction();
 }
 
-function seedDemoEmployer(db) {
-  if (
-    db
-      .prepare("SELECT 1 FROM users WHERE id = ?")
-      .get("mock-employer@luminatech.example")
-  ) {
-    return;
-  }
+function seedDemoAccounts(db, accounts) {
+  const employerEmail = String(accounts?.employerEmail ?? "")
+    .trim()
+    .toLowerCase();
+  const jobSeekerEmail = String(accounts?.jobSeekerEmail ?? "")
+    .trim()
+    .toLowerCase();
+  const password = String(accounts?.password ?? "");
+  if (!employerEmail || !jobSeekerEmail || password.length < 8) return;
+
   const now = new Date().toISOString();
   const transaction = db.transaction(() => {
     db.prepare(`
       INSERT INTO users
         (id, email, password_hash, display_name, role, created_at)
       VALUES (?, ?, ?, ?, 'employer', ?)
+      ON CONFLICT(id) DO UPDATE SET
+        email = excluded.email,
+        password_hash = excluded.password_hash,
+        display_name = excluded.display_name,
+        role = excluded.role
     `).run(
       "mock-employer@luminatech.example",
-      "employer@luminatech.example",
-      hashPassword("jobfinder-demo"),
+      employerEmail,
+      hashPassword(password),
       "Gabriel Jr.'s Team",
       now,
     );
@@ -413,6 +420,7 @@ function seedDemoEmployer(db) {
       INSERT INTO company_profiles
         (user_id, company_name, description, address, website, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO NOTHING
     `).run(
       "mock-employer@luminatech.example",
       "Lumina Tech Solutions",
@@ -421,6 +429,64 @@ function seedDemoEmployer(db) {
       "",
       now,
     );
+
+    const jobSeekerId =
+      db.prepare("SELECT id FROM users WHERE email = ?").get(jobSeekerEmail)?.id ??
+      "demo-job-seeker";
+    db.prepare(`
+      INSERT INTO users
+        (id, email, password_hash, display_name, role, created_at)
+      VALUES (?, ?, ?, ?, 'job-seeker', ?)
+      ON CONFLICT(id) DO UPDATE SET
+        email = excluded.email,
+        password_hash = excluded.password_hash,
+        display_name = excluded.display_name,
+        role = excluded.role
+    `).run(
+      jobSeekerId,
+      jobSeekerEmail,
+      hashPassword(password),
+      "JobFinder Demo User",
+      now,
+    );
+    db.prepare(`
+      INSERT INTO profiles
+        (user_id, full_name, mobile_number, barangay, city,
+         maximum_distance_km, maximum_minutes, home_node_id,
+         preferred_work_types_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO NOTHING
+    `).run(
+      jobSeekerId,
+      "JobFinder Demo User",
+      "0917 123 4567",
+      "Balibago",
+      "Angeles City",
+      10,
+      35,
+      "balibago",
+      json(["Full-time", "Hybrid"]),
+      now,
+    );
+
+    const addSkill = db.prepare(`
+      INSERT OR IGNORE INTO user_skills (user_id, skill_id, source)
+      VALUES (?, ?, 'self-reported')
+    `);
+    for (const skillName of [
+      "Java",
+      "Troubleshooting",
+      "Windows",
+      "Communication",
+      "Computer troubleshooting",
+      "Customer service",
+      "Basic networking",
+      "HTML",
+      "CSS",
+      "JavaScript",
+    ]) {
+      addSkill.run(jobSeekerId, ensureSkill(db, skillName).id);
+    }
   });
   transaction();
 }
@@ -459,7 +525,7 @@ export function isJobAvailable(job, now = Date.now()) {
 
 export function createDatabase(
   filename = DEFAULT_DATABASE_PATH,
-  { seedDemo = false } = {},
+  { seedDemo = false, demoAccounts = null } = {},
 ) {
   if (filename !== ":memory:") {
     mkdirSync(path.dirname(filename), { recursive: true });
@@ -472,7 +538,7 @@ export function createDatabase(
   seedSkills(db);
   seedGeography(db);
   if (seedDemo) {
-    seedDemoEmployer(db);
+    seedDemoAccounts(db, demoAccounts);
     seedJobs(db);
   }
   return db;

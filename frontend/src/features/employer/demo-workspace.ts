@@ -1,7 +1,5 @@
-export const LUMINA_DEMO_EMPLOYER_EMAIL =
-  "employer@luminatech.example";
 export const LUMINA_DEMO_EMPLOYER_ID =
-  `mock-${LUMINA_DEMO_EMPLOYER_EMAIL}`;
+  "mock-employer@luminatech.example";
 
 export function isLuminaDemoEmployer(
   employerId: string | null | undefined,

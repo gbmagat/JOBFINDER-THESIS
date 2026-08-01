@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  BriefcaseBusiness,
   Eye,
   EyeOff,
   LockKeyhole,
@@ -17,7 +16,6 @@ import {
   sanitizeReturnTo,
 } from "../features/auth/auth-intent";
 import { useJobs } from "../features/jobs/JobsContext";
-import { LUMINA_DEMO_EMPLOYER_EMAIL } from "../features/employer/demo-workspace";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 export function SignInPage() {
@@ -169,27 +167,6 @@ export function SignInPage() {
               <p>
                 Public browsing remains available offline. Reconnect to sign
                 in or continue an application.
-              </p>
-            </div>
-          ) : null}
-
-          {import.meta.env.DEV && requestedRole === "employer" ? (
-            <div className="notice" role="note">
-              <BriefcaseBusiness size={18} aria-hidden="true" />
-              <p>
-                Want to explore the filled Lumina workspace?{" "}
-                <button
-                  className="text-link"
-                  onClick={() => {
-                    setEmail(LUMINA_DEMO_EMPLOYER_EMAIL);
-                    setPassword("jobfinder-demo");
-                    setFieldErrors({});
-                    setError("");
-                  }}
-                  type="button"
-                >
-                  Fill Demo Sign-In
-                </button>
               </p>
             </div>
           ) : null}

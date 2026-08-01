@@ -10,9 +10,14 @@ let db;
 let server;
 let baseUrl;
 let temporaryDirectory;
+const demoAccounts = {
+  employerEmail: "employer-test@example.com",
+  jobSeekerEmail: "seeker-test@example.com",
+  password: "test-password-123",
+};
 
 beforeEach(async () => {
-  db = createDatabase(":memory:", { seedDemo: true });
+  db = createDatabase(":memory:", { seedDemo: true, demoAccounts });
   temporaryDirectory = mkdtempSync(path.join(tmpdir(), "jobfinder-api-"));
   const app = createApp({
     db,
@@ -89,6 +94,42 @@ async function register(role, email) {
     cookie: result.response.headers.get("set-cookie").split(";")[0],
   };
 }
+
+test("both development demo accounts can sign in", async () => {
+  const accounts = [
+    { email: demoAccounts.employerEmail, role: "employer" },
+    { email: demoAccounts.jobSeekerEmail, role: "job-seeker" },
+  ];
+
+  for (const account of accounts) {
+    const result = await request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        email: account.email,
+        password: demoAccounts.password,
+      }),
+    });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.body.user.email, account.email);
+    assert.equal(result.body.user.role, account.role);
+
+    if (account.role === "job-seeker") {
+      const cookie = result.response.headers.get("set-cookie").split(";")[0];
+      const profile = await request("/api/profile", {
+        headers: { cookie },
+      });
+      assert.equal(profile.response.status, 200);
+      assert.equal(profile.body.profile.homeNodeId, "balibago");
+      assert.equal(profile.body.profile.skills.length, 10);
+
+      const jobs = await request("/api/jobs", {
+        headers: { cookie },
+      });
+      assert.equal(jobs.response.status, 200);
+      assert.equal(typeof jobs.body.jobs[0].fit.overallScore, "number");
+    }
+  }
+});
 
 test("public jobs never expose a guest match score", async () => {
   const health = await request("/api/health");

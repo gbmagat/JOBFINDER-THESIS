@@ -9,9 +9,14 @@ import {
 } from "../src/routing.js";
 
 let db;
+const demoAccounts = {
+  employerEmail: "employer-test@example.com",
+  jobSeekerEmail: "seeker-test@example.com",
+  password: "test-password-123",
+};
 
 beforeEach(() => {
-  db = createDatabase(":memory:", { seedDemo: true });
+  db = createDatabase(":memory:", { seedDemo: true, demoAccounts });
 });
 
 afterEach(() => {
@@ -91,6 +96,7 @@ test("demo accounts and jobs are seeded only when explicitly requested", () => {
       cleanDatabase.prepare("SELECT COUNT(*) AS count FROM jobs").get().count,
       0,
     );
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 2);
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM jobs").get().count, 3);
   } finally {
     cleanDatabase.close();
