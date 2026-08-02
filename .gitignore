@@ -8,12 +8,29 @@ frontend/dist/
 frontend/.vite/
 frontend/coverage/
 frontend/*.tsbuildinfo
-backend/data/*.db
-backend/data/*.db-shm
-backend/data/*.db-wal
-backend/data/*.db-journal
-backend/uploads/
-backend/backups/
+
+# Runtime databases, uploads, and backups
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite3-journal
+/uploads/
+/backups/
+/backend/uploads/
+/backend/backups/
+*.bak
+*.backup
+*.dump
+*.dump.gz
+*.sql.gz
 
 # Local QA browser profile and cache
 frontend/.qa/
@@ -29,7 +46,65 @@ frontend/.qa/
 # Environment files
 .env
 .env.*
+*.env
 !.env.example
+!.env.*.example
+
+# Private keys and credential exports
+*.pem
+*.key
+*.p12
+*.pfx
+*.p8
+*.ppk
+*.pkcs8
+*.der
+*.crt
+*.cer
+*.jks
+*.keystore
+*.kdbx
+id_rsa*
+id_ed25519*
+id_dsa*
+id_ecdsa*
+credentials.json
+credentials-*.json
+credentials_*.json
+*-credentials.json
+*_credentials.json
+credentials.csv
+credentials-*.csv
+credentials_*.csv
+*-credentials.csv
+*_credentials.csv
+client_secret*.json
+client-secret*.json
+service-account.json
+service-account-*.json
+service-account_*.json
+*-service-account.json
+*_service-account.json
+service_account.json
+service_account-*.json
+service_account_*.json
+*-service_account.json
+*_service_account.json
+*firebase-adminsdk*.json
+secret.json
+secret-*.json
+secret_*.json
+*-secret.json
+*_secret.json
+secrets.json
+secrets-*.json
+secrets_*.json
+*-secrets.json
+*_secrets.json
+.npmrc
+.netrc
+.pypirc
+.secrets/
 
 # Logs
 *.log
@@ -41,3 +116,8 @@ Thumbs.db
 # Private project plans
 JOBFINDER_FIGMA_HIGH_FIDELITY_PLAN.md
 JOBFINDER_FRONTEND_BLUEPRINT.md
+
+# Private thesis working files
+/ONTOLOGY_BASED_OPPORTUNITY_RECOMMENDATION*.docx
+/create_jobfinder_google_forms.gs
+~$*.docx
