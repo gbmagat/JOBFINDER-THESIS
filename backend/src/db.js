@@ -707,7 +707,10 @@ export function createDatabase(
   const db = new Database(filename);
   try {
     db.pragma("foreign_keys = ON");
-    if (filename !== ":memory:") db.pragma("journal_mode = WAL");
+    if (filename !== ":memory:") {
+      db.pragma("journal_mode = WAL");
+      db.pragma("synchronous = FULL");
+    }
     createSchema(db);
     seedSkills(db);
     seedGeography(db);

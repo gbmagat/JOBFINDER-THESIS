@@ -1,7 +1,7 @@
 {
   "name": "jobfinder-thesis",
   "private": true,
-  "version": "3.5.0",
+  "version": "3.7.0",
   "engines": {
     "node": ">=22"
   },
@@ -10,6 +10,8 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:backend": "npm --prefix backend run dev",
     "start": "npm --prefix backend start",
+    "backup": "npm --prefix backend run backup",
+    "verify:backup": "npm --prefix backend run verify:backup --",
     "import:peso-lgu": "npm --prefix backend run import:peso-lgu --",
     "test": "npm --prefix frontend run test && npm --prefix backend test",
     "test:e2e": "npm run build && playwright test",

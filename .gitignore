@@ -13,6 +13,7 @@ backend/data/*.db-shm
 backend/data/*.db-wal
 backend/data/*.db-journal
 backend/uploads/
+backend/backups/
 
 # Local QA browser profile and cache
 frontend/.qa/
