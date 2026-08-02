@@ -3,12 +3,15 @@
   "private": true,
   "version": "3.5.0",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "import:peso-lgu": "node scripts/import-peso-lgu.js",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/app.js && node --check src/auth.js && node --check src/dataset-import.js && node --check src/db.js && node --check src/http.js && node --check src/matching.js && node --check src/routing.js && node --check src/seed-data.js && node --check src/routes/account-routes.js && node --check src/routes/auth-routes.js && node --check src/routes/employer-routes.js && node --check src/routes/public-routes.js && node --check scripts/import-peso-lgu.js"
+    "check": "node --check src/server.js && node --check src/server-config.js && node --check src/app.js && node --check src/auth.js && node --check src/dataset-import.js && node --check src/db.js && node --check src/http.js && node --check src/matching.js && node --check src/routing.js && node --check src/seed-data.js && node --check src/routes/account-routes.js && node --check src/routes/auth-routes.js && node --check src/routes/employer-routes.js && node --check src/routes/public-routes.js && node --check scripts/import-peso-lgu.js"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.2",

@@ -7,11 +7,17 @@ import { createAuthRouter } from "./routes/auth-routes.js";
 import { createEmployerRouter } from "./routes/employer-routes.js";
 import { createPublicRouter } from "./routes/public-routes.js";
 
-export function createApp({ db, uploadsDirectory, frontendDirectory } = {}) {
+export function createApp({
+  db,
+  uploadsDirectory,
+  frontendDirectory,
+  trustProxy = false,
+} = {}) {
   if (!db) throw new Error("createApp requires a database.");
   if (!uploadsDirectory) throw new Error("createApp requires an uploads directory.");
 
   const app = express();
+  if (trustProxy) app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use((_request, response, next) => {
     response.set({

@@ -1,0 +1,12 @@
+.git
+.github
+.codex-*
+.visual-qa
+**/node_modules
+frontend/dist
+frontend/.qa*
+backend/.env
+backend/data
+backend/uploads
+*.docx
+*.log
