@@ -5,6 +5,7 @@ import { optionalAuth } from "./auth.js";
 import { createAccountRouter } from "./routes/account-routes.js";
 import { createAuthRouter } from "./routes/auth-routes.js";
 import { createEmployerRouter } from "./routes/employer-routes.js";
+import { createLguRouter } from "./routes/lgu-routes.js";
 import { createPublicRouter } from "./routes/public-routes.js";
 
 export function createApp({
@@ -32,6 +33,7 @@ export function createApp({
 
   app.use("/api/auth", createAuthRouter(db));
   app.use("/api/employer", createEmployerRouter(db));
+  app.use("/api/lgu", createLguRouter(db));
   app.use("/api", createAccountRouter(db, uploadsDirectory));
   app.use("/api", createPublicRouter(db));
 

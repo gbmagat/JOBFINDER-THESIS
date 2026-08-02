@@ -48,7 +48,9 @@ describe("HomePage guest experience", () => {
     expect(
       screen.queryByAltText(/colleagues reviewing work/i),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/No account needed to browse/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/No account/i),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText(/percent overall match/i),
     ).not.toBeInTheDocument();

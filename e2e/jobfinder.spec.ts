@@ -10,6 +10,10 @@ const employer = {
   email: "qa-employer@example.test",
   password: "qa-test-password-2026",
 };
+const lguReviewer = {
+  email: "qa-lgu@example.test",
+  password: "qa-test-password-2026",
+};
 
 async function signIn(
   page: Page,
@@ -177,6 +181,70 @@ test.describe.serial("JobFinder critical user journeys", () => {
     await signIn(page, seeker, "job-seeker");
     await page.goto("/applications");
     await expect(page.getByText("Shortlisted").first()).toBeVisible();
+  });
+
+  test("an LGU reviewer approves the pending employer job", async ({ page }) => {
+    await page.goto("/lgu/sign-in");
+    await page.getByLabel("Official Email Address").fill(lguReviewer.email);
+    await page.getByLabel("Password", { exact: true }).fill(lguReviewer.password);
+    await page
+      .getByRole("button", { name: "Sign In to LGU Workspace" })
+      .click();
+    await expect(page).toHaveURL(/\/lgu$/);
+    await expect(
+      page.getByRole("heading", { name: "Verification Overview" }),
+    ).toBeVisible();
+
+    await page.goto("/lgu/verification");
+    const pendingJob = page
+      .locator("article.lgu-queue-row")
+      .filter({ hasText: "QA Support Coordinator" });
+    await expect(pendingJob).toBeVisible();
+    await pendingJob.getByRole("link", { name: "Open Review" }).click();
+    await expect(
+      page.getByRole("heading", { name: "QA Support Coordinator" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Approve Job Post" }).click();
+    await expect(page.getByRole("status")).toContainText(
+      "Job post approved and ready to publish.",
+    );
+
+    await page.goto("/lgu/audit-log");
+    await expect(page.getByText("Approved job post").first()).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("an LGU reviewer stays signed in when secure logout fails", async ({
+    page,
+  }) => {
+    await page.goto("/lgu/sign-in");
+    await page.getByLabel("Official Email Address").fill(lguReviewer.email);
+    await page.getByLabel("Password", { exact: true }).fill(lguReviewer.password);
+    await page
+      .getByRole("button", { name: "Sign In to LGU Workspace" })
+      .click();
+    await expect(page).toHaveURL(/\/lgu$/);
+
+    await page.route("**/api/auth/logout", (route) => route.abort());
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("alert")).toContainText(
+      "We could not securely sign you out",
+    );
+    await expect(page).toHaveURL(/\/lgu$/);
+    await expect(
+      page.getByRole("heading", { name: "Verification Overview" }),
+    ).toBeVisible();
+
+    await page.unroute("**/api/auth/logout");
+    await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes("/api/auth/logout") &&
+          response.request().method() === "POST",
+      ),
+      page.getByRole("button", { name: "Sign out" }).click(),
+    ]);
+    await expect(page).toHaveURL(/\/lgu\/sign-in(?:\?.*)?$/);
   });
 
   test("the authenticated mobile layout has one navigation and can sign out", async ({

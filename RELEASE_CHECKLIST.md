@@ -1,4 +1,4 @@
-# JobFinder Version 4.0 Release Checklist
+# JobFinder Version 4.1 Release Checklist
 
 ## Before deployment
 
@@ -11,6 +11,8 @@
 - [ ] Set `NODE_ENV=production`, `HOST=0.0.0.0`, and `JOBFINDER_SEED_DEMO=false`.
 - [ ] Configure persistent database, uploads, and backup paths on one mounted volume.
 - [ ] Confirm HTTPS is enabled before testing sign-in.
+- [ ] Route the approved `lgu.` or `peso.` subdomain to the same application service.
+- [ ] Provision reviewer accounts internally; never expose PESO/LGU public registration.
 - [ ] Leave PESO/LGU import deferred until the real approved dataset is received.
 
 ## Controlled evaluation data

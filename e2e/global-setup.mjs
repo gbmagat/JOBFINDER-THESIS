@@ -42,6 +42,7 @@ export default async function globalSetup() {
     demoAccounts: {
       employerEmail: "qa-employer@example.test",
       jobSeekerEmail: "qa-seeker@example.test",
+      pesoLguEmail: "qa-lgu@example.test",
       password: "qa-test-password-2026",
     },
   });

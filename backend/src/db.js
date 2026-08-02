@@ -72,6 +72,44 @@ function sanitizeRoute(value) {
   };
 }
 
+function migrateUserRoles(db) {
+  const table = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'")
+    .get();
+  if (!table?.sql || table.sql.includes("'peso-lgu'")) return;
+
+  db.pragma("foreign_keys = OFF");
+  try {
+    const migrate = db.transaction(() => {
+      db.exec(`
+        DROP TABLE IF EXISTS users_role_migration;
+        CREATE TABLE users_role_migration (
+          id TEXT PRIMARY KEY,
+          email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+          password_hash TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('job-seeker', 'employer', 'peso-lgu')),
+          created_at TEXT NOT NULL
+        );
+        INSERT INTO users_role_migration
+          (id, email, password_hash, display_name, role, created_at)
+        SELECT id, email, password_hash, display_name, role, created_at
+        FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_role_migration RENAME TO users;
+      `);
+    });
+    migrate();
+  } finally {
+    db.pragma("foreign_keys = ON");
+  }
+
+  const violations = db.pragma("foreign_key_check");
+  if (violations.length) {
+    throw new Error("The user-role migration failed its foreign-key check.");
+  }
+}
+
 function createSchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -79,7 +117,7 @@ function createSchema(db) {
       email TEXT NOT NULL UNIQUE COLLATE NOCASE,
       password_hash TEXT NOT NULL,
       display_name TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('job-seeker', 'employer')),
+      role TEXT NOT NULL CHECK (role IN ('job-seeker', 'employer', 'peso-lgu')),
       created_at TEXT NOT NULL
     );
 
@@ -157,6 +195,13 @@ function createSchema(db) {
       geo_node_id TEXT REFERENCES geo_nodes(id) ON DELETE SET NULL,
       owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
       status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('draft', 'active', 'closed')),
+      review_status TEXT NOT NULL DEFAULT 'approved' CHECK (
+        review_status IN ('draft', 'pending', 'approved', 'changes-requested', 'rejected')
+      ),
+      review_reason TEXT NOT NULL DEFAULT '',
+      submitted_for_review_at TEXT,
+      reviewed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+      reviewed_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -206,6 +251,42 @@ function createSchema(db) {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS employer_verifications (
+      employer_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (
+        status IN ('pending', 'verified', 'changes-requested', 'rejected')
+      ),
+      evidence_json TEXT NOT NULL DEFAULT '[]',
+      decision_reason TEXT NOT NULL DEFAULT '',
+      reviewed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+      reviewed_at TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TRIGGER IF NOT EXISTS audit_events_no_update
+    BEFORE UPDATE ON audit_events
+    BEGIN
+      SELECT RAISE(ABORT, 'Audit events are immutable.');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS audit_events_no_delete
+    BEFORE DELETE ON audit_events
+    BEGIN
+      SELECT RAISE(ABORT, 'Audit events are immutable.');
+    END;
+
     CREATE TABLE IF NOT EXISTS dataset_imports (
       id TEXT PRIMARY KEY,
       file_name TEXT NOT NULL,
@@ -224,6 +305,8 @@ function createSchema(db) {
     CREATE INDEX IF NOT EXISTS applications_applicant_idx
       ON applications(applicant_id, submitted_at DESC);
   `);
+
+  migrateUserRoles(db);
 
   const companyColumns = new Set(
     db
@@ -244,6 +327,39 @@ function createSchema(db) {
   if (!jobColumns.has("opening_count")) {
     db.exec("ALTER TABLE jobs ADD COLUMN opening_count INTEGER NOT NULL DEFAULT 1 CHECK (opening_count >= 1)");
   }
+  if (!jobColumns.has("review_status")) {
+    db.exec("ALTER TABLE jobs ADD COLUMN review_status TEXT NOT NULL DEFAULT 'approved' CHECK (review_status IN ('draft', 'pending', 'approved', 'changes-requested', 'rejected'))");
+  }
+  if (!jobColumns.has("review_reason")) {
+    db.exec("ALTER TABLE jobs ADD COLUMN review_reason TEXT NOT NULL DEFAULT ''");
+  }
+  if (!jobColumns.has("submitted_for_review_at")) {
+    db.exec("ALTER TABLE jobs ADD COLUMN submitted_for_review_at TEXT");
+  }
+  if (!jobColumns.has("reviewed_by")) {
+    db.exec("ALTER TABLE jobs ADD COLUMN reviewed_by TEXT REFERENCES users(id) ON DELETE SET NULL");
+  }
+  if (!jobColumns.has("reviewed_at")) {
+    db.exec("ALTER TABLE jobs ADD COLUMN reviewed_at TEXT");
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS jobs_review_idx
+      ON jobs(review_status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS employer_verification_status_idx
+      ON employer_verifications(status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS audit_events_created_idx
+      ON audit_events(created_at DESC);
+  `);
+
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT OR IGNORE INTO employer_verifications
+      (employer_id, status, evidence_json, decision_reason, updated_at)
+    SELECT id, 'pending', '[]', '', ?
+    FROM users
+    WHERE role = 'employer'
+  `).run(now);
 
   const geoEdgeColumns = new Set(
     db
@@ -376,8 +492,15 @@ function seedGeography(db) {
   transaction();
 }
 
-export function insertJob(db, job, ownerId = null, status = "active") {
+export function insertJob(
+  db,
+  job,
+  ownerId = null,
+  status = "active",
+  reviewStatus = "approved",
+) {
   const now = new Date().toISOString();
+  const submittedForReviewAt = reviewStatus === "pending" ? now : null;
   const transaction = db.transaction(() => {
     ensureJobSkills(db, job);
     db.prepare(`
@@ -385,12 +508,14 @@ export function insertJob(db, job, ownerId = null, status = "active") {
         id, title, employer_name, summary, description, location_json,
         employment_type, work_arrangement, schedule, opening_count, salary_json, posted_at,
         closing_at, requirements_json, route_json, source_json, tags_json,
-        geo_node_id, owner_id, status, created_at, updated_at
+        geo_node_id, owner_id, status, review_status, review_reason,
+        submitted_for_review_at, reviewed_by, reviewed_at, created_at, updated_at
       ) VALUES (
         @id, @title, @employerName, @summary, @description, @locationJson,
         @employmentType, @workArrangement, @schedule, @openingCount, @salaryJson, @postedAt,
         @closingAt, @requirementsJson, @routeJson, @sourceJson, @tagsJson,
-        @geoNodeId, @ownerId, @status, @createdAt, @updatedAt
+        @geoNodeId, @ownerId, @status, @reviewStatus, '',
+        @submittedForReviewAt, NULL, NULL, @createdAt, @updatedAt
       )
     `).run({
       id: job.id,
@@ -413,6 +538,8 @@ export function insertJob(db, job, ownerId = null, status = "active") {
       geoNodeId: job.geoNodeId ?? null,
       ownerId,
       status,
+      reviewStatus,
+      submittedForReviewAt,
       createdAt: now,
       updatedAt: now,
     });
@@ -454,6 +581,11 @@ export function upsertDatasetJob(db, job) {
         geo_node_id = @geoNodeId,
         owner_id = NULL,
         status = 'active',
+        review_status = 'approved',
+        review_reason = '',
+        submitted_for_review_at = NULL,
+        reviewed_by = NULL,
+        reviewed_at = NULL,
         updated_at = @updatedAt
       WHERE id = @id
     `).run({
@@ -517,22 +649,34 @@ function seedDemoAccounts(db, accounts) {
   const jobSeekerEmail = String(accounts?.jobSeekerEmail ?? "")
     .trim()
     .toLowerCase();
+  const pesoLguEmail = String(accounts?.pesoLguEmail ?? "")
+    .trim()
+    .toLowerCase();
   const password = String(accounts?.password ?? "");
   if (!employerEmail || !jobSeekerEmail || password.length < 8) return;
   if (employerEmail === jobSeekerEmail) {
     throw new Error("Demo employer and job seeker emails must be different.");
+  }
+  if (pesoLguEmail && [employerEmail, jobSeekerEmail].includes(pesoLguEmail)) {
+    throw new Error("The demo PESO/LGU email must be different from other demo accounts.");
   }
 
   const now = new Date().toISOString();
   const transaction = db.transaction(() => {
     const employerId = "mock-employer@luminatech.example";
     const defaultSeekerId = "demo-job-seeker";
+    const pesoLguId = "demo-peso-lgu";
     const employerEmailOwner = db
       .prepare("SELECT id, role, display_name FROM users WHERE email = ?")
       .get(employerEmail);
     const seekerEmailOwner = db
       .prepare("SELECT id, role, display_name FROM users WHERE email = ?")
       .get(jobSeekerEmail);
+    const pesoLguEmailOwner = pesoLguEmail
+      ? db
+          .prepare("SELECT id, role, display_name FROM users WHERE email = ?")
+          .get(pesoLguEmail)
+      : null;
     const isLegacyDemoSeeker = Boolean(
       seekerEmailOwner &&
         seekerEmailOwner.role === "job-seeker" &&
@@ -544,6 +688,7 @@ function seedDemoAccounts(db, accounts) {
       : defaultSeekerId;
     const stableEmployer = db.prepare("SELECT role FROM users WHERE id = ?").get(employerId);
     const stableSeeker = db.prepare("SELECT role FROM users WHERE id = ?").get(seekerId);
+    const stablePesoLgu = db.prepare("SELECT role FROM users WHERE id = ?").get(pesoLguId);
 
     if (employerEmailOwner && employerEmailOwner.id !== employerId) {
       throw new Error("The configured demo employer email already belongs to another account.");
@@ -551,11 +696,17 @@ function seedDemoAccounts(db, accounts) {
     if (seekerEmailOwner && seekerEmailOwner.id !== seekerId) {
       throw new Error("The configured demo job seeker email already belongs to another account.");
     }
+    if (pesoLguEmailOwner && pesoLguEmailOwner.id !== pesoLguId) {
+      throw new Error("The configured demo PESO/LGU email already belongs to another account.");
+    }
     if (stableEmployer && stableEmployer.role !== "employer") {
       throw new Error("The demo employer ID belongs to a different account role.");
     }
     if (stableSeeker && stableSeeker.role !== "job-seeker") {
       throw new Error("The demo job seeker ID belongs to a different account role.");
+    }
+    if (stablePesoLgu && stablePesoLgu.role !== "peso-lgu") {
+      throw new Error("The demo PESO/LGU ID belongs to a different account role.");
     }
 
     db.prepare(`
@@ -605,6 +756,20 @@ function seedDemoAccounts(db, accounts) {
         benefits:
           "Health coverage\nPaid skills training\nFlexible leave credits\nPerformance incentives",
       }),
+      now,
+    );
+    db.prepare(`
+      INSERT INTO employer_verifications
+        (employer_id, status, evidence_json, decision_reason, updated_at)
+      VALUES (?, 'verified', ?, '', ?)
+      ON CONFLICT(employer_id) DO NOTHING
+    `).run(
+      employerId,
+      json([
+        { type: "business-registration", status: "complete" },
+        { type: "business-contact", status: "complete" },
+        { type: "workplace-address", status: "complete" },
+      ]),
       now,
     );
 
@@ -659,6 +824,25 @@ function seedDemoAccounts(db, accounts) {
     ]) {
       addSkill.run(seekerId, ensureSkill(db, skillName).id);
     }
+
+    if (pesoLguEmail) {
+      db.prepare(`
+        INSERT INTO users
+          (id, email, password_hash, display_name, role, created_at)
+        VALUES (?, ?, ?, ?, 'peso-lgu', ?)
+        ON CONFLICT(id) DO UPDATE SET
+          email = excluded.email,
+          password_hash = excluded.password_hash,
+          display_name = excluded.display_name,
+          role = excluded.role
+      `).run(
+        pesoLguId,
+        pesoLguEmail,
+        hashPassword(password),
+        "PESO/LGU Reviewer",
+        now,
+      );
+    }
   });
   transaction();
 }
@@ -684,6 +868,11 @@ export function rowToJob(row) {
     source: parse(row.source_json, {}),
     tags: parse(row.tags_json, []),
     status: row.status,
+    reviewStatus: row.review_status ?? "approved",
+    reviewReason: row.review_reason ?? "",
+    submittedForReviewAt: row.submitted_for_review_at ?? undefined,
+    reviewedBy: row.reviewed_by ?? undefined,
+    reviewedAt: row.reviewed_at ?? undefined,
     ownerId: row.owner_id ?? undefined,
     geoNodeId: row.geo_node_id ?? undefined,
   };
@@ -691,6 +880,7 @@ export function rowToJob(row) {
 
 export function isJobAvailable(job, now = Date.now()) {
   if (!job || job.status !== "active") return false;
+  if (job.reviewStatus && job.reviewStatus !== "approved") return false;
   if (!job.closingAt) return true;
   const closingTime = Date.parse(job.closingAt);
   return Number.isFinite(closingTime) && closingTime > now;

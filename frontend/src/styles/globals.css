@@ -133,6 +133,8 @@ ol {
 
 .app-shell,
 .footer-only-shell {
+  --footer-body-gap: clamp(3.5rem, 6vw, 5rem);
+
   display: flex;
   min-height: 100vh;
   flex-direction: column;
@@ -144,7 +146,12 @@ ol {
   min-width: 0;
   min-height: 0;
   flex: 1 0 auto;
+  padding-bottom: var(--footer-body-gap);
   background: var(--color-canvas);
+}
+
+.app-main:focus-visible {
+  outline: none;
 }
 
 .app-content {
@@ -156,6 +163,7 @@ ol {
 
 .footer-only-shell > :not(.site-footer) {
   flex: 1 0 auto;
+  padding-bottom: var(--footer-body-gap);
 }
 
 .desktop-sidebar,
@@ -3191,7 +3199,8 @@ ol {
 
   .app-main {
     padding-bottom: calc(
-      var(--nav-mobile-height) + env(safe-area-inset-bottom)
+      var(--nav-mobile-height) + var(--footer-body-gap) +
+        env(safe-area-inset-bottom)
     );
   }
 
@@ -5238,7 +5247,7 @@ ol {
 
   .app-shell--focused .app-main {
     padding-top: 0;
-    padding-bottom: 0;
+    padding-bottom: var(--footer-body-gap);
   }
 
   .onboarding-page {
@@ -7601,22 +7610,6 @@ body,
   min-width: 8.75rem;
   min-height: 2.625rem;
   border-radius: 0.55rem;
-}
-
-.public-home-browse-note {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  margin-top: 0.75rem;
-  color: var(--palette-deep-green);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.public-home-browse-note svg {
-  padding: 0.12rem;
-  border-radius: 50%;
-  background: var(--green-50);
 }
 
 .public-data-strip {

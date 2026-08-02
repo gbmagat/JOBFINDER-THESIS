@@ -6,7 +6,11 @@ import {
   Routes,
   useLocation,
 } from "react-router-dom";
-import { AuthProvider, AUTH_USER_STORAGE_KEY } from "./AuthContext";
+import {
+  AuthProvider,
+  AUTH_USER_STORAGE_KEY,
+  type AuthRole,
+} from "./AuthContext";
 import { ProtectedRoute } from "./ProtectedRoute";
 import type { StorageLike } from "./auth-intent";
 
@@ -40,17 +44,26 @@ function LocationResult() {
 
 function renderGuard(
   initialPath: string,
-  allowedRoles: readonly ("job-seeker" | "employer")[],
+  allowedRoles: readonly AuthRole[],
   storage: StorageLike | null = null,
+  redirectTo = "/sign-in",
 ) {
   return render(
     <AuthProvider storage={storage}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
-          <Route element={<ProtectedRoute allowedRoles={allowedRoles} />}>
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={allowedRoles}
+                redirectTo={redirectTo}
+              />
+            }
+          >
             <Route path={initialPath} element={<h1>Protected content</h1>} />
           </Route>
           <Route path="/sign-in" element={<LocationResult />} />
+          <Route path="/lgu/sign-in" element={<LocationResult />} />
           <Route path="/jobs" element={<LocationResult />} />
         </Routes>
       </MemoryRouter>
@@ -102,5 +115,35 @@ describe("ProtectedRoute", () => {
     renderGuard("/employer", ["employer"], storage);
 
     expect(await screen.findByTestId("location")).toHaveTextContent("/jobs");
+  });
+
+  it("uses the dedicated sign-in and safe return path for LGU routes", async () => {
+    renderGuard(
+      "/lgu/verification",
+      ["peso-lgu"],
+      null,
+      "/lgu/sign-in",
+    );
+
+    expect(await screen.findByTestId("location")).toHaveTextContent(
+      "/lgu/sign-in?returnTo=%2Flgu%2Fverification",
+    );
+  });
+
+  it("accepts a stored LGU reviewer role and renders protected content", async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      AUTH_USER_STORAGE_KEY,
+      JSON.stringify({
+        id: "lgu-reviewer-1",
+        email: "reviewer@lgu.gov.ph",
+        displayName: "Ana Reviewer",
+        role: "peso-lgu",
+      }),
+    );
+
+    renderGuard("/lgu", ["peso-lgu"], storage, "/lgu/sign-in");
+
+    expect(await screen.findByRole("heading", { name: "Protected content" })).toBeInTheDocument();
   });
 });

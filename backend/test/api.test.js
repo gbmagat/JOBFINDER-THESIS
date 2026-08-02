@@ -13,6 +13,7 @@ let temporaryDirectory;
 const demoAccounts = {
   employerEmail: "employer-test@example.com",
   jobSeekerEmail: "seeker-test@example.com",
+  pesoLguEmail: "lgu-test@example.com",
   password: "test-password-123",
 };
 
@@ -95,6 +96,44 @@ async function register(role, email) {
   };
 }
 
+async function signIn(email, password = demoAccounts.password) {
+  const result = await request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  assert.equal(result.response.status, 200);
+  return {
+    user: result.body.user,
+    cookie: result.response.headers.get("set-cookie").split(";")[0],
+  };
+}
+
+async function approveJob(jobId) {
+  const reviewer = await signIn(demoAccounts.pesoLguEmail);
+  const review = await request(`/api/lgu/verification/jobs/${jobId}`, {
+    headers: { cookie: reviewer.cookie },
+  });
+  assert.equal(review.response.status, 200);
+  if (review.body.employer.verification.status !== "verified") {
+    const verification = await request(
+      `/api/lgu/employers/${review.body.employer.id}/decision`,
+      {
+        method: "POST",
+        headers: { cookie: reviewer.cookie },
+        body: JSON.stringify({ decision: "approve" }),
+      },
+    );
+    assert.equal(verification.response.status, 200);
+  }
+  const result = await request(`/api/lgu/verification/jobs/${jobId}/decision`, {
+    method: "POST",
+    headers: { cookie: reviewer.cookie },
+    body: JSON.stringify({ decision: "approve", note: "Job details verified." }),
+  });
+  assert.equal(result.response.status, 200);
+  return result.body.job;
+}
+
 function futureDeadline(days = 30) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
@@ -109,10 +148,11 @@ function assertDistanceOnlyRoute(route) {
   );
 }
 
-test("both development demo accounts can sign in", async () => {
+test("development demo accounts can sign in", async () => {
   const accounts = [
     { email: demoAccounts.employerEmail, role: "employer" },
     { email: demoAccounts.jobSeekerEmail, role: "job-seeker" },
+    { email: demoAccounts.pesoLguEmail, role: "peso-lgu" },
   ];
 
   for (const account of accounts) {
@@ -147,6 +187,227 @@ test("both development demo accounts can sign in", async () => {
       jobs.body.jobs.forEach((job) => assertDistanceOnlyRoute(job.route));
     }
   }
+});
+
+test("the PESO/LGU role is internally provisioned and protects its workspace", async () => {
+  const publicRegistration = await request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "public-reviewer@example.com",
+      password: "correct-horse-battery",
+      displayName: "Public Reviewer",
+      role: "peso-lgu",
+    }),
+  });
+  assert.equal(publicRegistration.response.status, 400);
+  assert.match(publicRegistration.body.error.fields.role, /Job Seeker or Employer/);
+
+  const guest = await request("/api/lgu/overview");
+  assert.equal(guest.response.status, 401);
+
+  const employer = await register("employer", "lgu-role-check@example.com");
+  const wrongRole = await request("/api/lgu/overview", {
+    headers: { cookie: employer.cookie },
+  });
+  assert.equal(wrongRole.response.status, 403);
+
+  const reviewer = await signIn(demoAccounts.pesoLguEmail);
+  assert.equal(reviewer.user.role, "peso-lgu");
+  const overview = await request("/api/lgu/overview", {
+    headers: { cookie: reviewer.cookie },
+  });
+  assert.equal(overview.response.status, 200);
+  assert.ok(Array.isArray(overview.body.metrics));
+  assert.equal(typeof overview.body.metrics[0].value, "number");
+  assert.ok(Array.isArray(overview.body.recentActivity));
+  assert.ok(overview.body.priorities);
+});
+
+test("pending employer jobs require PESO/LGU approval and decisions are audited", async () => {
+  const employer = await register("employer", "pending-owner@example.com");
+  const created = await request("/api/employer/jobs", {
+    method: "POST",
+    headers: { cookie: employer.cookie },
+    body: JSON.stringify({
+      title: "Pending Review Role",
+      summary: "This job must be reviewed before public browsing.",
+      description: "A complete employer listing awaiting PESO/LGU review.",
+      employmentType: "Full-time",
+      workArrangement: "On-site",
+      geoNodeId: "nepo-center",
+      requiredSkills: ["Verification Testing"],
+      salaryMinimumPhp: 20000,
+      salaryMaximumPhp: 25000,
+      closingAt: futureDeadline(),
+      status: "active",
+    }),
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.job.status, "draft");
+  assert.equal(created.body.job.reviewStatus, "pending");
+
+  const hidden = await request(`/api/jobs/${created.body.job.id}`);
+  assert.equal(hidden.response.status, 404);
+
+  const reviewer = await signIn(demoAccounts.pesoLguEmail);
+  const headers = { cookie: reviewer.cookie };
+  const queue = await request("/api/lgu/verification", { headers });
+  assert.equal(queue.response.status, 200);
+  assert.ok(queue.body.items.some((job) => job.id === created.body.job.id));
+  assert.equal(typeof queue.body.items[0].jobTitle, "string");
+
+  const review = await request(
+    `/api/lgu/verification/jobs/${created.body.job.id}`,
+    { headers },
+  );
+  assert.equal(review.response.status, 200);
+  assert.equal(review.body.job.id, created.body.job.id);
+  assert.equal(review.body.employer.id, employer.user.id);
+  assert.ok(Array.isArray(review.body.evidence));
+
+  const employers = await request("/api/lgu/employers", { headers });
+  assert.equal(employers.response.status, 200);
+  const employerRecord = employers.body.employers.find(
+    (record) => record.id === employer.user.id,
+  );
+  assert.equal(employerRecord.name, "Test Company");
+  assert.equal(employerRecord.status, "Pending Review");
+
+  const employerDetail = await request(`/api/lgu/employers/${employer.user.id}`, {
+    headers,
+  });
+  assert.equal(employerDetail.response.status, 200);
+  assert.ok(Array.isArray(employerDetail.body.checklist));
+  assert.ok(Array.isArray(employerDetail.body.evidence));
+
+  const missingEmployerNote = await request(
+    `/api/lgu/employers/${employer.user.id}/decision`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision: "request-changes" }),
+    },
+  );
+  assert.equal(missingEmployerNote.response.status, 400);
+
+  const unverifiedEmployerApproval = await request(
+    `/api/lgu/verification/jobs/${created.body.job.id}/decision`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision: "approve" }),
+    },
+  );
+  assert.equal(unverifiedEmployerApproval.response.status, 409);
+  assert.equal(
+    unverifiedEmployerApproval.body.error.code,
+    "EMPLOYER_NOT_VERIFIED",
+  );
+
+  const requestedEmployerChanges = await request(
+    `/api/lgu/employers/${employer.user.id}/decision`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        decision: "request-changes",
+        note: "Provide an updated workplace record.",
+      }),
+    },
+  );
+  assert.equal(requestedEmployerChanges.response.status, 200);
+  const highRiskQueue = await request("/api/lgu/verification", { headers });
+  assert.equal(
+    highRiskQueue.body.items.find((job) => job.id === created.body.job.id)
+      .riskLevel,
+    "high",
+  );
+
+  const verifiedEmployer = await request(
+    `/api/lgu/employers/${employer.user.id}/decision`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision: "approve" }),
+    },
+  );
+  assert.equal(verifiedEmployer.response.status, 200);
+  assert.equal(verifiedEmployer.body.employer.verification.status, "verified");
+
+  const missingJobNote = await request(
+    `/api/lgu/verification/jobs/${created.body.job.id}/decision`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision: "request-changes" }),
+    },
+  );
+  assert.equal(missingJobNote.response.status, 400);
+
+  const approved = await request(
+    `/api/lgu/verification/jobs/${created.body.job.id}/decision`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision: "approve", note: "Listing verified." }),
+    },
+  );
+  assert.equal(approved.response.status, 200);
+  assert.equal(approved.body.job.status, "active");
+  assert.equal(approved.body.job.reviewStatus, "approved");
+
+  const visible = await request(`/api/jobs/${created.body.job.id}`);
+  assert.equal(visible.response.status, 200);
+  assert.equal("reviewStatus" in visible.body.job, false);
+
+  const rejectedEmployer = await request(
+    `/api/lgu/employers/${employer.user.id}/decision`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        decision: "reject",
+        note: "Employer evidence could not be verified.",
+      }),
+    },
+  );
+  assert.equal(rejectedEmployer.response.status, 200);
+  assert.equal(rejectedEmployer.body.hiddenJobs, 1);
+  const hiddenAfterRejection = await request(`/api/jobs/${created.body.job.id}`);
+  assert.equal(hiddenAfterRejection.response.status, 404);
+
+  const restoredEmployer = await request(
+    `/api/lgu/employers/${employer.user.id}/decision`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision: "approve" }),
+    },
+  );
+  assert.equal(restoredEmployer.response.status, 200);
+  const stillHiddenAfterRestoration = await request(
+    `/api/jobs/${created.body.job.id}`,
+  );
+  assert.equal(stillHiddenAfterRestoration.response.status, 404);
+
+  const audit = await request("/api/lgu/audit-log", { headers });
+  assert.equal(audit.response.status, 200);
+  assert.deepEqual(
+    new Set(audit.body.entries.map((entry) => entry.action)),
+    new Set([
+      "Requested employer evidence",
+      "Verified employer",
+      "Approved job post",
+      "Rejected employer record",
+    ]),
+  );
+  assert.equal(audit.body.total, audit.body.entries.length);
+  assert.throws(
+    () => db.prepare("UPDATE audit_events SET summary = 'changed' WHERE id = ?").run(
+      audit.body.entries[0].id,
+    ),
+    /immutable/i,
+  );
 });
 
 test("public jobs never expose a guest match score", async () => {
@@ -328,7 +589,7 @@ test("PESO and LGU listings preserve their external application method", async (
   assert.equal(result.body.applicationMethod, "email");
 });
 
-test("an employer can publish a job and review its submitted application", async () => {
+test("an employer can submit a job and review its application after approval", async () => {
   const employer = await register("employer", "owner@example.com");
   const created = await request("/api/employer/jobs", {
     method: "POST",
@@ -353,8 +614,11 @@ test("an employer can publish a job and review its submitted application", async
   });
   assert.equal(created.response.status, 201);
   assert.equal(created.body.job.openingCount, 3);
+  assert.equal(created.body.job.status, "draft");
+  assert.equal(created.body.job.reviewStatus, "pending");
   assert.ok(Date.parse(created.body.job.closingAt) > Date.now());
   const jobId = created.body.job.id;
+  await approveJob(jobId);
 
   const searchableSkill = await request("/api/skills?query=API%20Test");
   assert.deepEqual(
@@ -510,6 +774,7 @@ test("company details persist on the server and rename owned jobs only", async (
   assert.notEqual(otherCompany.body.company.companyName, "Renamed Local Company");
   assert.equal(otherCompany.body.company.industry, undefined);
 
+  await approveJob(created.body.job.id);
   const publicJob = await request(`/api/jobs/${created.body.job.id}`);
   assert.equal(publicJob.body.job.employerName, "Renamed Local Company");
   assert.equal(
@@ -600,6 +865,7 @@ test("employers cannot access or mutate another employer's applicants", async ()
     }),
   });
   const seeker = await register("job-seeker", "ownership-seeker@example.com");
+  await approveJob(created.body.job.id);
   const submitted = await request("/api/applications", {
     method: "POST",
     headers: { cookie: seeker.cookie },
@@ -758,8 +1024,12 @@ test("deadlines are validated and expired jobs stay unavailable everywhere", asy
     }),
   });
   assert.equal(activated.response.status, 200);
-  assert.equal(activated.body.job.status, "active");
+  assert.equal(activated.body.job.status, "draft");
+  assert.equal(activated.body.job.reviewStatus, "pending");
   assert.ok(Date.parse(activated.body.job.closingAt) > Date.now());
+  const approved = await approveJob(draft.body.job.id);
+  assert.equal(approved.status, "active");
+  assert.equal(approved.reviewStatus, "approved");
   await request(`/api/employer/jobs/${draft.body.job.id}`, {
     method: "PATCH",
     headers: { cookie: employer.cookie },
@@ -773,6 +1043,7 @@ test("deadlines are validated and expired jobs stay unavailable everywhere", asy
   });
   assert.equal(created.response.status, 201);
   const jobId = created.body.job.id;
+  await approveJob(jobId);
   db.prepare("UPDATE jobs SET closing_at = ? WHERE id = ?").run(
     "2020-01-01T00:00:00.000Z",
     jobId,

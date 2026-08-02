@@ -2,7 +2,10 @@ import {
   Bookmark,
   BriefcaseBusiness,
   Building2,
+  ClipboardCheck,
   ClipboardList,
+  FileCheck2,
+  History,
   Home,
   LogOut,
   Search,
@@ -13,6 +16,7 @@ import {
   type CSSProperties,
   useEffect,
   useRef,
+  useState,
 } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Link, Outlet, useLocation } from "react-router-dom";
@@ -87,6 +91,33 @@ const employerNavigation: NavigationItem[] = [
   },
 ];
 
+const lguNavigation: NavigationItem[] = [
+  {
+    to: "/lgu",
+    label: "Overview",
+    icon: Home,
+    end: true,
+  },
+  {
+    to: "/lgu/verification",
+    label: "Verification Queue",
+    mobileLabel: "Queue",
+    icon: ClipboardCheck,
+  },
+  {
+    to: "/lgu/employers",
+    label: "Employer Records",
+    mobileLabel: "Employers",
+    icon: FileCheck2,
+  },
+  {
+    to: "/lgu/audit-log",
+    label: "Audit Log",
+    mobileLabel: "Audit",
+    icon: History,
+  },
+];
+
 function topNavClass(isActive: boolean) {
   return `top-nav-link${isActive ? " is-active" : ""}`;
 }
@@ -141,6 +172,17 @@ function isNavigationItemActive(
     return pathname === item.to;
   }
 
+  if (role === "peso-lgu") {
+    if (item.to === "/lgu") return pathname === "/lgu";
+    if (item.to === "/lgu/verification") {
+      return pathname === item.to || pathname.startsWith(`${item.to}/`);
+    }
+    if (item.to === "/lgu/employers") {
+      return pathname === item.to || pathname.startsWith(`${item.to}/`);
+    }
+    return pathname === item.to;
+  }
+
   if (item.to === "/applications") {
     return (
       pathname === "/applications" ||
@@ -179,12 +221,18 @@ function getPageTitle(pathname: string) {
   if (pathname.startsWith("/employer/company")) return "Company Profile";
   if (pathname.startsWith("/employer/posts")) return "Job Posts";
   if (pathname.startsWith("/employer")) return "Employer Overview";
+  if (pathname === "/lgu") return "Verification Overview";
+  if (pathname === "/lgu/verification") return "Verification Queue";
+  if (pathname.startsWith("/lgu/verification/jobs/")) return "Job Post Review";
+  if (pathname === "/lgu/employers") return "Employer Records";
+  if (pathname.startsWith("/lgu/employers/")) return "Employer Review";
+  if (pathname === "/lgu/audit-log") return "Audit Log";
   return "Page Not Found";
 }
 
 function Brand({
   compact = false,
-  context = "Public Job Browser",
+  context,
 }: {
   compact?: boolean;
   context?: string;
@@ -206,7 +254,7 @@ function Brand({
       </span>
       <span className="brand-copy">
         <span className="brand-name">JobFinder</span>
-        <span className="brand-context">{context}</span>
+        {context ? <span className="brand-context">{context}</span> : null}
       </span>
     </Link>
   );
@@ -228,8 +276,10 @@ function DesktopTopNavigation({
   const context =
     user?.role === "employer"
       ? "Employer Workspace"
+      : user?.role === "peso-lgu"
+        ? "PESO / LGU Workspace"
       : isGuest
-        ? "Public Job Browser"
+        ? undefined
         : "Job Seeker Workspace";
 
   return (
@@ -279,6 +329,8 @@ function DesktopTopNavigation({
                 <small>
                   {user?.role === "employer"
                     ? "Employer Team"
+                    : user?.role === "peso-lgu"
+                      ? "LGU Reviewer"
                     : "Job Seeker Account"}
                 </small>
               </span>
@@ -349,13 +401,21 @@ function TabletRail({
       <Link
         className="rail-user"
         to={
-          isGuest ? "/sign-in" : user?.role === "employer" ? "/employer" : "/profile"
+          isGuest
+            ? "/sign-in"
+            : user?.role === "employer"
+              ? "/employer"
+              : user?.role === "peso-lgu"
+                ? "/lgu"
+                : "/profile"
         }
         title={
           isGuest
             ? "Browsing as guest · Sign in"
             : user?.role === "employer"
               ? "Open employer overview"
+              : user?.role === "peso-lgu"
+                ? "Open verification overview"
               : "Open profile"
         }
         aria-label={
@@ -363,6 +423,8 @@ function TabletRail({
             ? "Browsing as guest, sign in"
             : user?.role === "employer"
               ? "Open employer overview"
+              : user?.role === "peso-lgu"
+                ? "Open verification overview"
               : "Open profile"
         }
       >
@@ -399,8 +461,10 @@ function MobileChrome({
   const context =
     user?.role === "employer"
       ? "Employer Workspace"
+      : user?.role === "peso-lgu"
+        ? "PESO / LGU Workspace"
       : isGuest
-        ? "Public Job Browser"
+        ? undefined
         : "Job Seeker Workspace";
 
   return (
@@ -410,7 +474,15 @@ function MobileChrome({
         <div className="mobile-account-actions">
           <Link
             className="mobile-auth-link"
-            to={isGuest ? "/sign-in" : user?.role === "employer" ? "/employer" : "/profile"}
+            to={
+              isGuest
+                ? "/sign-in"
+                : user?.role === "employer"
+                  ? "/employer"
+                  : user?.role === "peso-lgu"
+                    ? "/lgu"
+                    : "/profile"
+            }
           >
             {isGuest ? "Sign In" : "Account"}
           </Link>
@@ -471,9 +543,14 @@ export function PublicLayout() {
   const { pathname } = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   const firstRoute = useRef(true);
+  const [signOutError, setSignOutError] = useState("");
   const isGuest = !user;
   const items =
-    user?.role === "employer" ? employerNavigation : jobSeekerNavigation;
+    user?.role === "employer"
+      ? employerNavigation
+      : user?.role === "peso-lgu"
+        ? lguNavigation
+        : jobSeekerNavigation;
   const isFocusedFlow =
     pathname === "/sign-in" ||
     pathname === "/register" ||
@@ -493,6 +570,17 @@ export function PublicLayout() {
     );
   }, [pathname]);
 
+  async function handleSignOut() {
+    setSignOutError("");
+    try {
+      await signOut();
+    } catch {
+      setSignOutError(
+        "We could not securely sign you out. Check your connection and try again.",
+      );
+    }
+  }
+
   return (
     <div
       className={`app-shell${isFocusedFlow ? " app-shell--focused" : ""}`}
@@ -504,21 +592,21 @@ export function PublicLayout() {
       <DesktopTopNavigation
         isGuest={isGuest}
         items={items}
-        onSignOut={signOut}
+        onSignOut={handleSignOut}
         pathname={pathname}
         user={user}
       />
       <TabletRail
         isGuest={isGuest}
         items={items}
-        onSignOut={signOut}
+        onSignOut={handleSignOut}
         pathname={pathname}
         user={user}
       />
       <MobileChrome
         isGuest={isGuest}
         items={items}
-        onSignOut={signOut}
+        onSignOut={handleSignOut}
         pathname={pathname}
         user={user}
       />
@@ -530,10 +618,15 @@ export function PublicLayout() {
         tabIndex={-1}
       >
         <div className="app-content">
+          {signOutError ? (
+            <div className="alert alert--danger" role="alert">
+              <span>{signOutError}</span>
+            </div>
+          ) : null}
           <Outlet />
         </div>
       </main>
-      <SiteFooter />
+      <SiteFooter variant={user?.role === "peso-lgu" ? "lgu" : "default"} />
     </div>
   );
 }

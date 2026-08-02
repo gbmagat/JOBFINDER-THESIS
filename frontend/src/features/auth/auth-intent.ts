@@ -148,6 +148,52 @@ export function sanitizeEmployerReturnTo(
   }
 }
 
+export function sanitizeLguReturnTo(
+  value: string | null | undefined,
+  fallback = "/lgu",
+  origin = DEFAULT_ORIGIN,
+): string {
+  if (typeof value !== "string") return fallback;
+
+  const candidate = value.trim();
+  const pathOnly = candidate.split(/[?#]/, 1)[0] ?? "";
+  if (
+    !candidate.startsWith("/") ||
+    candidate.startsWith("//") ||
+    candidate.includes("\\") ||
+    /[\u0000-\u001f\u007f]/.test(candidate) ||
+    /%(?:2f|5c)/i.test(pathOnly)
+  ) {
+    return fallback;
+  }
+
+  try {
+    const baseUrl = new URL(origin);
+    const parsed = new URL(candidate, baseUrl);
+    const decodedPath = decodeURIComponent(parsed.pathname);
+    const isAllowed =
+      /^\/lgu\/?$/.test(decodedPath) ||
+      /^\/lgu\/(?:verification|employers|audit-log)\/?$/.test(decodedPath) ||
+      /^\/lgu\/(?:verification\/jobs|employers)\/[^/]+\/?$/.test(decodedPath);
+
+    if (
+      parsed.origin !== baseUrl.origin ||
+      decodedPath.startsWith("//") ||
+      decodedPath.includes("\\") ||
+      decodedPath
+        .split("/")
+        .some((segment) => segment === "." || segment === "..") ||
+      !isAllowed
+    ) {
+      return fallback;
+    }
+
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 export function getJobDetailPath(jobId: string): string {
   const normalizedJobId = jobId.trim();
 

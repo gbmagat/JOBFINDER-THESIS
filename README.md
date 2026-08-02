@@ -1,12 +1,14 @@
-# JobFinder - Version 4.0 Repository Privacy Hardening
+# JobFinder - Version 4.1 PESO/LGU Verification Workspace
 
 JobFinder is a responsive React, Express, and SQLite thesis prototype for explainable skill and geographic job matching. Guests can browse jobs without match percentages. Personalized scores appear only after a signed-in Job Seeker completes the required profile details and skills.
 
-The frontend and backend are connected. Employer-created jobs, accounts, profiles, applications, uploaded PDF resumes, and sessions persist in SQLite and protected storage. The real PESO/LGU dataset is still pending and is not replaced with invented production data.
+The frontend and backend are connected. Employer-created jobs, accounts, profiles, applications, uploaded PDF resumes, sessions, employer verification, job-post decisions, and the immutable review log persist in SQLite and protected storage. The real PESO/LGU dataset is still pending and is not replaced with invented production data.
 
 Version 3.9 prevents local environment files, databases, uploads, and backups from entering the Docker build context or runtime image.
 
 Version 4.0 reduces accidental-publication risk by ignoring common private thesis files and sensitive runtime artifacts, then checking that sensitive paths are not already tracked by Git.
+
+Version 4.1 adds the restricted PESO/LGU reviewer workspace, employer and job-post verification, subdomain-aware access, an immutable Audit Log, and lifecycle protection that withdraws approved jobs when an employer loses verification.
 
 ## Run locally
 

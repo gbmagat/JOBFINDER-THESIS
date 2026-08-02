@@ -9,7 +9,7 @@ The backend is a small REST API built with Node.js, Express, and SQLite.
 - `src/dataset-import.js` validates and normalizes PESO/LGU job records.
 - `src/matching.js` calculates ontology skill evidence and the 70/30 score.
 - `src/routing.js` runs Dijkstra over the local route graph.
-- `src/routes/` contains the public, account, and employer endpoints.
+- `src/routes/` contains the public, account, employer, and PESO/LGU endpoints.
 - `src/server.js` starts the API.
 
 ## Run the project
@@ -32,11 +32,12 @@ npm run dev
 Direct backend or production-style startup stays safe by default and does not
 seed demo data unless `JOBFINDER_SEED_DEMO` is explicitly enabled.
 
-To configure the private Employer and Job Seeker accounts, copy
+To configure the private Employer, Job Seeker, and PESO/LGU reviewer accounts, copy
 `backend/.env.example` to `backend/.env` and fill in:
 
 - `JOBFINDER_DEMO_EMPLOYER_EMAIL`
 - `JOBFINDER_DEMO_JOB_SEEKER_EMAIL`
+- `JOBFINDER_DEMO_PESO_LGU_EMAIL`
 - `JOBFINDER_DEMO_PASSWORD`
 
 The ignored `.env` file remains on the local computer and is not pushed to
@@ -79,11 +80,27 @@ provisioning, and rollback procedure.
 Public visitors can browse jobs, job details, dataset sources, and neutral route
 estimates. The API requires a signed-in Job Seeker for profiles, saved jobs, and
 applications. Applications require an uploaded PDF resume up to 5 MB. Employer
-endpoints require an Employer account. Closed listings and listings past their
-closing date are unavailable for browsing, saving, and applying.
+endpoints require an Employer account. Employer-submitted jobs remain hidden
+until a PESO/LGU reviewer approves them. Closed listings, unapproved listings,
+and listings past their closing date are unavailable for browsing, saving, and
+applying.
 
-PESO and LGU organizations are dataset sources only. They do not have accounts
-or an administrator dashboard.
+The `peso-lgu` role is internally provisioned and cannot be selected through
+public registration. Its protected `/api/lgu` endpoints provide the verification
+overview, employer records and decisions, job-post review decisions, and the
+immutable audit log. PESO/LGU dataset imports remain separate from employer-owned
+job-post moderation.
+
+The frontend contract uses:
+
+- `GET /api/lgu/overview`
+- `GET /api/lgu/verification`
+- `GET /api/lgu/verification/jobs/:jobId`
+- `POST /api/lgu/verification/jobs/:jobId/decision`
+- `GET /api/lgu/employers`
+- `GET /api/lgu/employers/:employerId`
+- `POST /api/lgu/employers/:employerId/decision`
+- `GET /api/lgu/audit-log`
 
 ## Import a PESO/LGU JSON dataset
 
@@ -115,6 +132,10 @@ available job from search results.
 - Full Job Seeker and company profiles persist in SQLite.
 - Employer jobs validate contract values, salary, openings, supported route
   nodes, and future application deadlines.
+- Employer publication requests enter a pending-review queue and only approved
+  jobs become publicly available.
+- PESO/LGU reviewer decisions store reviewer identity, timestamp, reason, and an
+  immutable audit event.
 - A date-only employer deadline is stored as the end of that day in Angeles
   City time.
 - Required and preferred job skills are added to the searchable skill catalog.

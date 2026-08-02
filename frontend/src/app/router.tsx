@@ -1,6 +1,7 @@
 import { lazy } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import { ProtectedRoute } from "../features/auth/ProtectedRoute";
+import { LguHostBoundary } from "../features/auth/LguHostBoundary";
 import { FooterOnlyLayout } from "../layouts/FooterOnlyLayout";
 import { PublicLayout } from "../layouts/PublicLayout";
 
@@ -44,11 +45,6 @@ const EmployerPostsPage = lazy(() =>
     default: module.EmployerPostsPage,
   })),
 );
-const HomePage = lazy(() =>
-  import("../pages/HomePage").then((module) => ({
-    default: module.HomePage,
-  })),
-);
 const JobDetailPage = lazy(() =>
   import("../pages/JobDetailPage").then((module) => ({
     default: module.JobDetailPage,
@@ -57,6 +53,46 @@ const JobDetailPage = lazy(() =>
 const JobsPage = lazy(() =>
   import("../pages/JobsPage").then((module) => ({
     default: module.JobsPage,
+  })),
+);
+const LguAuditLogPage = lazy(() =>
+  import("../pages/LguAuditLogPage").then((module) => ({
+    default: module.LguAuditLogPage,
+  })),
+);
+const LguEmployerRecordsPage = lazy(() =>
+  import("../pages/LguEmployerRecordsPage").then((module) => ({
+    default: module.LguEmployerRecordsPage,
+  })),
+);
+const LguEmployerReviewPage = lazy(() =>
+  import("../pages/LguEmployerReviewPage").then((module) => ({
+    default: module.LguEmployerReviewPage,
+  })),
+);
+const LguHostRootPage = lazy(() =>
+  import("../pages/LguHostRootPage").then((module) => ({
+    default: module.LguHostRootPage,
+  })),
+);
+const LguJobReviewPage = lazy(() =>
+  import("../pages/LguJobReviewPage").then((module) => ({
+    default: module.LguJobReviewPage,
+  })),
+);
+const LguOverviewPage = lazy(() =>
+  import("../pages/LguOverviewPage").then((module) => ({
+    default: module.LguOverviewPage,
+  })),
+);
+const LguSignInPage = lazy(() =>
+  import("../pages/LguSignInPage").then((module) => ({
+    default: module.LguSignInPage,
+  })),
+);
+const LguVerificationQueuePage = lazy(() =>
+  import("../pages/LguVerificationQueuePage").then((module) => ({
+    default: module.LguVerificationQueuePage,
   })),
 );
 const NotFoundPage = lazy(() =>
@@ -92,13 +128,18 @@ const SkillsSetupPage = lazy(() =>
 
 const jobSeekerOnly = ["job-seeker"] as const;
 const employerOnly = ["employer"] as const;
+const lguOnly = ["peso-lgu"] as const;
 
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <PublicLayout />,
+    element: (
+      <LguHostBoundary>
+        <PublicLayout />
+      </LguHostBoundary>
+    ),
     children: [
-      { index: true, element: <HomePage /> },
+      { index: true, element: <LguHostRootPage /> },
       { path: "jobs", element: <JobsPage /> },
       { path: "jobs/:jobId", element: <JobDetailPage /> },
       { path: "jobs/:jobId/route", element: <RoutePage /> },
@@ -132,14 +173,45 @@ export const router = createBrowserRouter([
           { path: "employer/company", element: <CompanyProfilePage /> },
         ],
       },
+      {
+        element: (
+          <ProtectedRoute
+            allowedRoles={lguOnly}
+            redirectTo="/lgu/sign-in"
+            unauthorizedTo="/lgu/sign-in"
+          />
+        ),
+        children: [
+          { path: "lgu", element: <LguOverviewPage /> },
+          {
+            path: "lgu/verification",
+            element: <LguVerificationQueuePage />,
+          },
+          {
+            path: "lgu/verification/jobs/:jobId",
+            element: <LguJobReviewPage />,
+          },
+          { path: "lgu/employers", element: <LguEmployerRecordsPage /> },
+          {
+            path: "lgu/employers/:employerId",
+            element: <LguEmployerReviewPage />,
+          },
+          { path: "lgu/audit-log", element: <LguAuditLogPage /> },
+        ],
+      },
       { path: "*", element: <NotFoundPage /> },
     ],
   },
   {
-    element: <FooterOnlyLayout />,
+    element: (
+      <LguHostBoundary>
+        <FooterOnlyLayout />
+      </LguHostBoundary>
+    ),
     children: [
       { path: "/sign-in", element: <SignInPage /> },
       { path: "/register", element: <RegisterPage /> },
     ],
   },
+  { path: "/lgu/sign-in", element: <LguSignInPage /> },
 ]);

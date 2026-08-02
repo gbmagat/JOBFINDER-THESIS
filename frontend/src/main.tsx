@@ -7,6 +7,7 @@ import { router } from "./app/router";
 import "./styles/globals.css";
 import "./styles/application.css";
 import "./styles/auth-dialog.css";
+import "./styles/lgu.css";
 import "./styles/motion.css";
 
 const root = document.getElementById("root");

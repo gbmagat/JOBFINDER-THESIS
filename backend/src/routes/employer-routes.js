@@ -295,14 +295,14 @@ export function createEmployerRouter(db) {
         organizationType: "employer",
         ownerId: request.user.id,
         freshness: "current",
-        publishedAt: status === "active" ? now : undefined,
         applicationMethod: "jobfinder",
         applicationInstructions: "Sign in to apply through JobFinder.",
       },
       tags: stringArray(request.body?.tags, 12, 60),
     };
 
-    insertJob(db, job, request.user.id, status);
+    const reviewStatus = status === "active" ? "pending" : "draft";
+    insertJob(db, job, request.user.id, "draft", reviewStatus);
     const saved = rowToJob(db.prepare("SELECT * FROM jobs WHERE id = ?").get(id));
     response.status(201).json({ job: employerJobWithCounts(saved, new Map()) });
   });
@@ -325,6 +325,12 @@ export function createEmployerRouter(db) {
     const source = JSON.parse(job.source_json);
     const now = new Date().toISOString();
     let closingAt = job.closing_at;
+    let storedStatus = status;
+    let reviewStatus = job.review_status;
+    let reviewReason = job.review_reason;
+    let submittedForReviewAt = job.submitted_for_review_at;
+    let reviewedBy = job.reviewed_by;
+    let reviewedAt = job.reviewed_at;
     if (status === "active") {
       const normalizedClosingAt = normalizeClosingAt(
         request.body?.closingAt ?? job.closing_at,
@@ -344,14 +350,32 @@ export function createEmployerRouter(db) {
         return;
       }
       closingAt = normalizedClosingAt.value;
-      if (!source.publishedAt) source.publishedAt = now;
+      storedStatus = "draft";
+      reviewStatus = "pending";
+      reviewReason = "";
+      submittedForReviewAt = now;
+      reviewedBy = null;
+      reviewedAt = null;
+    } else if (status === "draft") {
+      reviewStatus = "draft";
+      reviewReason = "";
+      submittedForReviewAt = null;
+      reviewedBy = null;
+      reviewedAt = null;
     }
     db.prepare(`
       UPDATE jobs
-      SET status = ?, closing_at = ?, source_json = ?, updated_at = ?
+      SET status = ?, review_status = ?, review_reason = ?,
+          submitted_for_review_at = ?, reviewed_by = ?, reviewed_at = ?,
+          closing_at = ?, source_json = ?, updated_at = ?
       WHERE id = ? AND owner_id = ?
     `).run(
-      status,
+      storedStatus,
+      reviewStatus,
+      reviewReason,
+      submittedForReviewAt,
+      reviewedBy,
+      reviewedAt,
       closingAt,
       JSON.stringify(source),
       now,

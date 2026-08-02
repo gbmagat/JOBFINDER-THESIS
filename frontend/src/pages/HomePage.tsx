@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
   ArrowRight,
-  Check,
   Compass,
   Search,
   ShieldCheck,
@@ -329,8 +328,7 @@ function PublicHome() {
             </p>
             <h1 id="home-heading">Welcome to JobFinder</h1>
             <p className="public-home-hero__lede">
-              Browse local jobs or open the Employer Workspace. No account is
-              needed until you apply.
+              Browse local jobs or open the Employer Workspace.
             </p>
 
             <label
@@ -356,11 +354,6 @@ function PublicHome() {
                 Search Jobs
               </button>
             </form>
-
-            <p className="public-home-browse-note">
-              <Check size={16} aria-hidden="true" />
-              No account needed to browse
-            </p>
           </div>
         </div>
       </section>

@@ -1,6 +1,6 @@
 # JobFinder Deployment Guide
 
-This guide deploys Version 4.0 as one Node.js service that serves both the built React frontend and the Express API. The current release is suitable for a controlled thesis evaluation. The real PESO/LGU dataset is still pending and must not be replaced with invented records.
+This guide deploys Version 4.1 as one Node.js service that serves both the built React frontend and the Express API. The current release is suitable for a controlled thesis evaluation. The real PESO/LGU dataset is still pending and must not be replaced with invented records.
 
 ## Required runtime
 
@@ -30,13 +30,13 @@ Do not configure the three demo-account variables in production. Keep the databa
 Build the image:
 
 ```powershell
-docker build -t jobfinder:4.0 .
+docker build -t jobfinder:4.1 .
 ```
 
 Run it with a persistent volume:
 
 ```powershell
-docker run -d --name jobfinder -p 4000:4000 -v jobfinder-storage:/app/storage jobfinder:4.0
+docker run -d --name jobfinder -p 4000:4000 -v jobfinder-storage:/app/storage jobfinder:4.1
 ```
 
 The Docker image sets the production host and storage paths. A hosting platform may provide `PORT` automatically. Add `JOBFINDER_TRUST_PROXY=true` only when the platform has exactly one trusted proxy hop.

@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { type AuthRole, useAuth } from "./AuthContext";
 import {
   sanitizeEmployerReturnTo,
+  sanitizeLguReturnTo,
   sanitizeReturnTo,
 } from "./auth-intent";
 
@@ -37,13 +38,14 @@ export function ProtectedRoute({
   if (!user) {
     const employerAccess =
       allowedRoles?.length === 1 && allowedRoles[0] === "employer";
+    const lguAccess =
+      allowedRoles?.length === 1 && allowedRoles[0] === "peso-lgu";
+    const requestedPath = `${location.pathname}${location.search}${location.hash}`;
     const returnTo = employerAccess
-      ? sanitizeEmployerReturnTo(
-          `${location.pathname}${location.search}${location.hash}`,
-        )
-      : sanitizeReturnTo(
-          `${location.pathname}${location.search}${location.hash}`,
-        );
+      ? sanitizeEmployerReturnTo(requestedPath)
+      : lguAccess
+        ? sanitizeLguReturnTo(requestedPath)
+        : sanitizeReturnTo(requestedPath);
     const signInSearch = new URLSearchParams({
       returnTo,
       ...(employerAccess ? { role: "employer" } : {}),

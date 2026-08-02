@@ -21,6 +21,7 @@ if (config.production && !existsSync(frontendIndex)) {
 const demoAccounts = {
   employerEmail: process.env.JOBFINDER_DEMO_EMPLOYER_EMAIL,
   jobSeekerEmail: process.env.JOBFINDER_DEMO_JOB_SEEKER_EMAIL,
+  pesoLguEmail: process.env.JOBFINDER_DEMO_PESO_LGU_EMAIL,
   password: process.env.JOBFINDER_DEMO_PASSWORD,
 };
 const db = createDatabase(storage.databasePath, {

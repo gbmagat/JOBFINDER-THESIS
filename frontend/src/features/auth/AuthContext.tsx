@@ -12,7 +12,7 @@ import { apiRequest } from "../../lib/api";
 
 export const AUTH_USER_STORAGE_KEY = "jobfinder.auth-user.v1";
 
-export type AuthRole = "job-seeker" | "employer";
+export type AuthRole = "job-seeker" | "employer" | "peso-lgu";
 
 export interface AuthUser {
   id: string;
@@ -34,7 +34,7 @@ export interface AuthContextValue {
   isReady: boolean;
   signIn(input: SignInInput): Promise<AuthUser>;
   register(input: Required<SignInInput>): Promise<AuthUser>;
-  signOut(): void;
+  signOut(): Promise<void>;
 }
 
 interface AuthProviderProps {
@@ -80,7 +80,9 @@ function parseStoredUser(storedValue: string | null): AuthUser | null {
       typeof user.id !== "string" ||
       typeof user.email !== "string" ||
       typeof user.displayName !== "string" ||
-      (user.role !== "job-seeker" && user.role !== "employer")
+      user.role !== "job-seeker" &&
+      user.role !== "employer" &&
+      user.role !== "peso-lgu"
     ) {
       return null;
     }
@@ -214,13 +216,21 @@ export function AuthProvider({ children, storage }: AuthProviderProps) {
 
       if (input.role && nextUser.role !== input.role) {
         if (!usesMockAuth) {
-          void apiRequest<null>("/auth/logout", { method: "POST" }).catch(
-            () => {},
-          );
+          try {
+            await apiRequest<null>("/auth/logout", { method: "POST" });
+          } catch {
+            throw new Error(
+              "We could not safely close the account session. Please try again.",
+            );
+          }
         }
-        throw new Error(
-          `This email belongs to a ${nextUser.role === "employer" ? "Employer" : "Job Seeker"} account.`,
-        );
+        const accountLabel =
+          nextUser.role === "employer"
+            ? "Employer"
+            : nextUser.role === "peso-lgu"
+              ? "PESO / LGU Reviewer"
+              : "Job Seeker";
+        throw new Error(`This email belongs to a ${accountLabel} account.`);
       }
 
       if (activeStorage) {
@@ -258,9 +268,9 @@ export function AuthProvider({ children, storage }: AuthProviderProps) {
     [activeStorage, usesMockAuth],
   );
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
     if (!usesMockAuth) {
-      void apiRequest<null>("/auth/logout", { method: "POST" }).catch(() => {});
+      await apiRequest<null>("/auth/logout", { method: "POST" });
     }
     if (activeStorage) {
       try {

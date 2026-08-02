@@ -87,11 +87,16 @@ export function createUser(db, input) {
         INSERT INTO profiles (user_id, full_name, updated_at)
         VALUES (?, ?, ?)
       `).run(user.id, user.displayName, now);
-    } else {
+    } else if (user.role === "employer") {
       db.prepare(`
         INSERT INTO company_profiles (user_id, company_name, updated_at)
         VALUES (?, ?, ?)
       `).run(user.id, user.displayName, now);
+      db.prepare(`
+        INSERT INTO employer_verifications
+          (employer_id, status, evidence_json, decision_reason, updated_at)
+        VALUES (?, 'pending', '[]', '', ?)
+      `).run(user.id, now);
     }
   });
 

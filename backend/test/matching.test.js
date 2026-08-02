@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
+import Database from "better-sqlite3";
 import {
   createDatabase,
   insertJob,
@@ -18,6 +19,7 @@ let db;
 const demoAccounts = {
   employerEmail: "employer-test@example.com",
   jobSeekerEmail: "seeker-test@example.com",
+  pesoLguEmail: "lgu-test@example.com",
   password: "test-password-123",
 };
 
@@ -162,7 +164,7 @@ test("demo accounts and jobs are seeded only when explicitly requested", () => {
       cleanDatabase.prepare("SELECT COUNT(*) AS count FROM jobs").get().count,
       0,
     );
-    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 2);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 3);
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM jobs").get().count, 3);
   } finally {
     cleanDatabase.close();
@@ -212,6 +214,49 @@ test("demo seeding rejects equal account emails", () => {
       }),
     /must be different/,
   );
+});
+
+test("an existing two-role database migrates without losing users", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "jobfinder-role-migration-"));
+  const databasePath = path.join(directory, "jobfinder.db");
+  try {
+    const legacy = new Database(databasePath);
+    legacy.exec(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        password_hash TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('job-seeker', 'employer')),
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO users
+        (id, email, password_hash, display_name, role, created_at)
+      VALUES
+        ('legacy-employer', 'legacy@example.com', 'salt:hash',
+         'Legacy Employer', 'employer', '2026-01-01T00:00:00.000Z');
+    `);
+    legacy.close();
+
+    const migrated = createDatabase(databasePath, {
+      seedDemo: true,
+      demoAccounts,
+    });
+    assert.equal(
+      migrated.prepare("SELECT role FROM users WHERE id = ?").get("legacy-employer").role,
+      "employer",
+    );
+    assert.equal(
+      migrated.prepare("SELECT role FROM users WHERE email = ?").get(
+        demoAccounts.pesoLguEmail,
+      ).role,
+      "peso-lgu",
+    );
+    assert.equal(migrated.pragma("foreign_key_check").length, 0);
+    migrated.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("demo seeding does not take ownership of a conflicting non-seed row", () => {

@@ -9,6 +9,11 @@ function publicJob(job, fit) {
     ownerId: _ownerId,
     geoNodeId: _geoNodeId,
     status: _status,
+    reviewStatus: _reviewStatus,
+    reviewReason: _reviewReason,
+    submittedForReviewAt: _submittedForReviewAt,
+    reviewedBy: _reviewedBy,
+    reviewedAt: _reviewedAt,
     source,
     ...result
   } = job;
