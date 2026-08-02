@@ -1,24 +1,37 @@
-# JobFinder — Version 3.4 Profile Completion & Match Logic
+# JobFinder - Version 3.8 Release Readiness
 
-This version requires job seekers to complete their personal details, home area, and at least one skill before personalized match percentages appear. Geographic matching is distance-only: every available job stays visible, no commute ceiling is requested, and no estimated travel time is shown.
+JobFinder is a responsive React, Express, and SQLite thesis prototype for explainable skill and geographic job matching. Guests can browse jobs without match percentages. Personalized scores appear only after a signed-in Job Seeker completes the required profile details and skills.
+
+The frontend and backend are connected. Employer-created jobs, accounts, profiles, applications, uploaded PDF resumes, and sessions persist in SQLite and protected storage. The real PESO/LGU dataset is still pending and is not replaced with invented production data.
 
 ## Run locally
 
 ```powershell
-npm install --prefix frontend
-npm install --prefix backend
+npm ci
+npm ci --prefix frontend
+npm ci --prefix backend
 npm run dev
 ```
 
-The frontend opens through Vite and sends API requests to the backend. Development mode includes demo jobs and supports private Employer and Job Seeker accounts configured through the ignored `backend/.env` file.
+Copy `backend/.env.example` to the ignored `backend/.env` only when private local demo accounts are needed.
 
-## Checks
+## Verify the release
 
 ```powershell
-npm run check
-npm test
-npm run build
-npm run test:e2e
+npm run release:check
 ```
 
-The frontend-only release remains available through the `v2.0-frontend` Git tag, and the previous connected backend release remains available through `v3.2-backend-update`.
+This runs frontend/backend checks and unit tests, builds the production frontend, completes the critical browser journeys, and starts the real production server against temporary storage for a final smoke test.
+
+## Production operations
+
+```powershell
+npm run build
+npm start
+npm run backup
+npm run verify:backup
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for environment, persistent storage, backup, restore, provisioning, and rollback instructions. Use [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before a controlled thesis evaluation.
+
+Earlier milestones remain available through their Git history and release tags, including `v2.0-frontend`, `v3.2-backend-update`, and `v3.5-distance-only-matching`.

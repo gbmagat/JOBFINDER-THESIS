@@ -1,7 +1,7 @@
 {
   "name": "jobfinder-thesis",
   "private": true,
-  "version": "3.7.0",
+  "version": "3.8.0",
   "engines": {
     "node": ">=22"
   },
@@ -13,6 +13,8 @@
     "backup": "npm --prefix backend run backup",
     "verify:backup": "npm --prefix backend run verify:backup --",
     "import:peso-lgu": "npm --prefix backend run import:peso-lgu --",
+    "smoke:production": "node scripts/smoke-production.mjs",
+    "release:check": "npm run check && npm test && npm run test:e2e && npm run smoke:production",
     "test": "npm --prefix frontend run test && npm --prefix backend test",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && playwright test --headed",

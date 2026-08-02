@@ -40,7 +40,7 @@ To configure the private Employer and Job Seeker accounts, copy
 - `JOBFINDER_DEMO_PASSWORD`
 
 The ignored `.env` file remains on the local computer and is not pushed to
-GitHub. The Job Seeker demo includes a completed profile, travel preferences,
+GitHub. The Job Seeker demo includes a completed profile, work preferences,
 and skills so personalized matches are available immediately.
 
 The frontend opens through Vite and sends `/api` requests to the backend at
@@ -54,6 +54,25 @@ npm start
 ```
 
 The backend then serves the built frontend and API from port 4000.
+
+## Persistent storage and backups
+
+Production uses these environment variables for durable storage:
+
+- `JOBFINDER_DATABASE_PATH`
+- `JOBFINDER_UPLOADS_PATH`
+- `JOBFINDER_BACKUPS_PATH`
+- `JOBFINDER_BACKUP_RETENTION_COUNT`
+
+Create and verify an online SQLite and uploads backup from the project root:
+
+```powershell
+npm run backup
+npm run verify:backup
+```
+
+See `DEPLOYMENT.md` in the project root for the persistent-volume, restore,
+provisioning, and rollback procedure.
 
 ## Authentication rule
 
