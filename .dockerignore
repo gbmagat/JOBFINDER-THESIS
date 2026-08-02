@@ -5,8 +5,10 @@
 **/node_modules
 frontend/dist
 frontend/.qa*
-backend/.env
+frontend/.env*
+backend/.env*
 backend/data
 backend/uploads
+backend/backups
 *.docx
 *.log

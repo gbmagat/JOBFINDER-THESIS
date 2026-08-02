@@ -18,7 +18,8 @@ ENV JOBFINDER_BACKUPS_PATH=/app/storage/backups
 WORKDIR /app
 COPY backend/package.json backend/package-lock.json ./backend/
 RUN npm ci --omit=dev --prefix backend
-COPY backend ./backend
+COPY backend/src ./backend/src
+COPY backend/scripts ./backend/scripts
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
 VOLUME ["/app/storage"]

@@ -1,10 +1,11 @@
-# JobFinder Version 3.8 Release Checklist
+# JobFinder Version 3.9 Release Checklist
 
 ## Before deployment
 
 - [ ] Confirm only intended source files are committed.
 - [ ] Install dependencies with `npm ci`, `npm ci --prefix frontend`, and `npm ci --prefix backend`.
 - [ ] Run `npm run release:check` and keep the passing output.
+- [ ] Confirm `npm run check:docker` reports that private storage is excluded.
 - [ ] Build the Docker image on a machine with Docker because Docker is not installed on the current development computer.
 - [ ] Set `NODE_ENV=production`, `HOST=0.0.0.0`, and `JOBFINDER_SEED_DEMO=false`.
 - [ ] Configure persistent database, uploads, and backup paths on one mounted volume.
