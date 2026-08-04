@@ -20,7 +20,7 @@
 .job-card,
 .public-start-card,
 .public-data-strip a,
-.map-pin--job {
+.job-map-marker {
   transition:
     transform var(--motion-base) var(--motion-ease-out),
     background-color var(--transition-fast),
@@ -164,11 +164,11 @@
   transform: translateY(-3px);
 }
 
-.map-pin--job {
+.job-map-marker {
   box-shadow: var(--shadow-sm);
 }
 
-.map-pin--job[aria-pressed="true"] {
+.job-map-marker--selected {
   box-shadow:
     0 0 0 5px var(--green-100),
     var(--shadow-md);
@@ -315,8 +315,8 @@
     transform: translateY(-3px) scale(1.015);
   }
 
-  .map-pin--job:hover,
-  .map-pin--job:focus-visible {
+  .job-map-marker-host:hover .job-map-marker,
+  .job-map-marker-host:focus .job-map-marker {
     box-shadow:
       0 0 0 5px var(--green-100),
       var(--shadow-hover);
@@ -357,7 +357,7 @@
   .skill-custom-action,
   .application-page .file-field,
   .company-logo-control,
-  .map-pin--job,
+  .job-map-marker,
   .auth-shell,
   .auth-gate[open] {
     animation: none !important;

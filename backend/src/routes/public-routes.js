@@ -4,7 +4,13 @@ import { sendError } from "../http.js";
 import { getUserMatch } from "../matching.js";
 import { calculateRoute } from "../routing.js";
 
-function publicJob(job, fit) {
+function withoutLocationScore(route) {
+  if (!route) return null;
+  const { locationScore: _locationScore, ...publicRoute } = route;
+  return publicRoute;
+}
+
+function publicJob(job, fit, calculatedRoute = null) {
   const {
     ownerId: _ownerId,
     geoNodeId: _geoNodeId,
@@ -14,12 +20,20 @@ function publicJob(job, fit) {
     submittedForReviewAt: _submittedForReviewAt,
     reviewedBy: _reviewedBy,
     reviewedAt: _reviewedAt,
+    route: _storedRoute,
     source,
     ...result
   } = job;
   const { ownerId: _sourceOwnerId, ...publicSource } = source ?? {};
   const publicResult = { ...result, source: publicSource };
-  return fit ? { ...publicResult, fit, route: fit.route } : publicResult;
+  return fit
+    ? { ...publicResult, fit, route: fit.route }
+    : {
+        ...publicResult,
+        ...(calculatedRoute
+          ? { route: withoutLocationScore(calculatedRoute) }
+          : {}),
+      };
 }
 
 function matchForRequest(db, request, job) {
@@ -103,15 +117,22 @@ export function createPublicRouter(db) {
           .toLowerCase();
         return searchable.includes(query);
       })
-      .map((job) => ({ job, fit: matchForRequest(db, request, job) }));
+      .map((job) => {
+        const fit = matchForRequest(db, request, job);
+        return {
+          job,
+          fit,
+          route: fit?.route ?? calculateRoute(db, "balibago", job.geoNodeId),
+        };
+      });
 
     if (sort === "best-match" && request.user?.role === "job-seeker") {
       jobs.sort((left, right) => (right.fit?.overallScore ?? -1) - (left.fit?.overallScore ?? -1));
     } else if (sort === "distance" || sort === "nearest-distance") {
       jobs.sort(
         (left, right) =>
-          (left.fit?.route.distanceKm ?? left.job.route.distanceKm) -
-          (right.fit?.route.distanceKm ?? right.job.route.distanceKm),
+          (left.route?.distanceKm ?? Number.POSITIVE_INFINITY) -
+          (right.route?.distanceKm ?? Number.POSITIVE_INFINITY),
       );
     }
 
@@ -120,7 +141,7 @@ export function createPublicRouter(db) {
     response.json({
       jobs: jobs
         .slice(start, start + pageSize)
-        .map(({ job, fit }) => publicJob(job, fit)),
+        .map(({ job, fit, route }) => publicJob(job, fit, route)),
       page,
       pageSize,
       total,
@@ -128,6 +149,10 @@ export function createPublicRouter(db) {
   });
 
   router.get("/jobs/:jobId/route", (request, response) => {
+    response.set({
+      "Cache-Control": "private, no-store",
+      Vary: "Cookie",
+    });
     const job = rowToJob(
       db.prepare("SELECT * FROM jobs WHERE id = ?").get(request.params.jobId),
     );
@@ -139,11 +164,18 @@ export function createPublicRouter(db) {
     const fit = matchForRequest(db, request, job);
     const route =
       fit?.route ??
-      calculateRoute(db, "balibago", job.geoNodeId) ??
-      job.route;
-    const { locationScore: _locationScore, ...publicRoute } = route;
+      calculateRoute(db, "balibago", job.geoNodeId);
+    if (!route) {
+      sendError(
+        response,
+        422,
+        "ROUTE_UNAVAILABLE",
+        "JobFinder could not calculate a Dijkstra route for this job.",
+      );
+      return;
+    }
     response.json({
-      route: fit ? route : publicRoute,
+      route: fit ? route : withoutLocationScore(route),
       personalized: Boolean(fit),
       startingArea: fit ? "Saved Home Area" : "Balibago Reference Area",
     });
@@ -157,7 +189,9 @@ export function createPublicRouter(db) {
       sendError(response, 404, "JOB_NOT_FOUND", "This job is no longer available.");
       return;
     }
-    response.json({ job: publicJob(job, matchForRequest(db, request, job)) });
+    const fit = matchForRequest(db, request, job);
+    const route = fit?.route ?? calculateRoute(db, "balibago", job.geoNodeId);
+    response.json({ job: publicJob(job, fit, route) });
   });
 
   return router;

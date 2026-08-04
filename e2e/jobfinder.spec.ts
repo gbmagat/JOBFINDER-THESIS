@@ -14,6 +14,38 @@ const lguReviewer = {
   email: "qa-lgu@example.test",
   password: "qa-test-password-2026",
 };
+const transparentMapTile = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+async function useOfflineOpenStreetMapTiles(page: Page) {
+  await page.route("https://tile.openstreetmap.org/**", (route) =>
+    route.fulfill({
+      body: transparentMapTile,
+      contentType: "image/png",
+      status: 200,
+    }),
+  );
+}
+
+function expectDijkstraGeometry(payload: {
+  route: {
+    algorithm?: string;
+    geometry: { coordinates: number[][]; type: string };
+    routeId: string;
+  };
+}) {
+  expect(payload.route.algorithm).toBe("dijkstra");
+  expect(payload.route.geometry.type).toBe("LineString");
+  expect(payload.route.geometry.coordinates.length).toBeGreaterThanOrEqual(2);
+  for (const [longitude, latitude] of payload.route.geometry.coordinates) {
+    expect(Number.isFinite(longitude)).toBe(true);
+    expect(Number.isFinite(latitude)).toBe(true);
+    expect(Math.abs(longitude)).toBeLessThanOrEqual(180);
+    expect(Math.abs(latitude)).toBeLessThanOrEqual(90);
+  }
+}
 
 async function signIn(
   page: Page,
@@ -77,6 +109,96 @@ test.describe.serial("JobFinder critical user journeys", () => {
 
     await page.goto("/profile");
     await expect(page).toHaveURL(/\/sign-in\?.*returnTo=%2Fprofile/);
+  });
+
+  test("the jobs and route maps show OSM data with JobFinder Dijkstra geometry", async ({
+    page,
+  }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await useOfflineOpenStreetMapTiles(page);
+
+    const jobsRouteResponsePromise = page.waitForResponse(
+      (response) =>
+        /\/api\/jobs\/[^/]+\/route$/.test(new URL(response.url()).pathname) &&
+        response.request().method() === "GET",
+    );
+    await page.goto("/jobs");
+    const jobsRouteResponse = await jobsRouteResponsePromise;
+    expect(jobsRouteResponse.ok()).toBe(true);
+    const jobsRoutePayload = (await jobsRouteResponse.json()) as {
+      route: {
+        algorithm?: string;
+        geometry: { coordinates: number[][]; type: string };
+        routeId: string;
+      };
+    };
+    expectDijkstraGeometry(jobsRoutePayload);
+
+    const jobsMap = page.getByTestId("jobs-map");
+    await expect(jobsMap).toBeVisible();
+    await expect(jobsMap).toHaveAttribute("data-marker-count", "3");
+    await expect(jobsMap).toHaveAttribute(
+      "data-route-id",
+      jobsRoutePayload.route.routeId,
+    );
+    await expect(
+      jobsMap.getByRole("link", { name: "OpenStreetMap" }),
+    ).toHaveAttribute(
+      "href",
+      "https://www.openstreetmap.org/copyright",
+    );
+    await expect(
+      page.getByText("Shortest path calculated by JobFinder Dijkstra"),
+    ).toBeVisible();
+
+    const routeResponsePromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/jobs/${jobId}/route` &&
+        response.request().method() === "GET",
+    );
+    await page.goto(`/jobs/${jobId}/route`);
+    const routeResponse = await routeResponsePromise;
+    expect(routeResponse.ok()).toBe(true);
+    const routePayload = (await routeResponse.json()) as {
+      route: {
+        algorithm?: string;
+        geometry: { coordinates: number[][]; type: string };
+        routeId: string;
+      };
+    };
+    expectDijkstraGeometry(routePayload);
+
+    const routeMap = page.getByTestId("route-map");
+    await expect(routeMap).toBeVisible();
+    await expect(routeMap).toHaveAttribute(
+      "data-route-id",
+      routePayload.route.routeId,
+    );
+    await expect(routeMap).toContainText(
+      `contains ${routePayload.route.geometry.coordinates.length} mapped points`,
+    );
+    await expect(
+      routeMap.getByRole("link", { name: "OpenStreetMap" }),
+    ).toHaveAttribute(
+      "href",
+      "https://www.openstreetmap.org/copyright",
+    );
+    await expect(
+      page.getByText("Calculated by JobFinder Dijkstra", { exact: true }),
+    ).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/jobs");
+    for (let pass = 0; pass < 3; pass += 1) {
+      await page.getByRole("button", { name: "Show Map" }).click();
+      await expect(page.getByTestId("jobs-map")).toBeVisible();
+      await page.getByRole("button", { name: "Show List" }).click();
+      await expect(page.getByTestId("jobs-map")).toBeHidden();
+    }
+    await page.goto(`/jobs/${jobId}/route`);
+    await expect(page.getByTestId("route-map")).toBeVisible();
+    expect(pageErrors).toEqual([]);
   });
 
   test("a job seeker signs in through the apply gate and submits a PDF", async ({

@@ -1,0 +1,163 @@
+.job-map-shell {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: #eedda9;
+}
+
+.job-map {
+  width: 100%;
+  height: 22rem;
+  min-height: 18rem;
+}
+
+.job-map-shell--route .job-map {
+  height: 27rem;
+}
+
+.job-map__status {
+  position: absolute;
+  z-index: 500;
+  right: 0.75rem;
+  bottom: 1.75rem;
+  left: 0.75rem;
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 0.5rem 1.25rem rgb(30 48 84 / 15%);
+  color: var(--palette-navy);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.job-map__attribution {
+  position: absolute;
+  z-index: 500;
+  right: 0;
+  bottom: 0;
+  padding: 0.2rem 0.35rem;
+  border-radius: 0.25rem 0 0;
+  background: rgb(255 255 255 / 90%);
+  color: var(--palette-navy);
+  font-size: 0.62rem;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.job-map__attribution:hover,
+.job-map__attribution:focus-visible {
+  text-decoration: underline;
+}
+
+.job-map-marker-host {
+  border: 0;
+  background: transparent;
+}
+
+.job-map-marker {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: var(--palette-indigo);
+  box-shadow: 0 0.35rem 0.9rem rgb(30 48 84 / 28%);
+  color: #ffffff;
+  font-family: "Montserrat Variable", Montserrat, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.job-map-marker-host .job-map-marker--selected {
+  background: var(--palette-deep-green);
+  box-shadow:
+    0 0 0 4px rgb(69 114 87 / 22%),
+    0 0.45rem 1rem rgb(30 48 84 / 32%);
+}
+
+.job-map-marker-host .job-map-marker--start {
+  background: var(--palette-tan);
+  color: var(--palette-navy);
+}
+
+.job-map-marker-host .job-map-marker--end {
+  background: var(--palette-deep-green);
+}
+
+.leaflet-container {
+  z-index: 0;
+  background: #eedda9;
+  font-family: "Montserrat Variable", Montserrat, sans-serif;
+}
+
+.leaflet-control-zoom {
+  border: 0 !important;
+  box-shadow: 0 0.35rem 1rem rgb(30 48 84 / 16%) !important;
+}
+
+.leaflet-control-zoom a {
+  color: var(--palette-deep-green);
+}
+
+.map-panel.map-panel--real {
+  display: none;
+}
+
+.map-panel__source {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+  color: var(--palette-deep-green);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+@media (max-width: 1279px) {
+  .map-panel.map-panel--real.map-panel--mobile-visible {
+    display: block;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .jobs-page .mobile-toolbar > button[aria-pressed] {
+    display: inline-flex;
+  }
+}
+
+@media (min-width: 1280px) {
+  .map-panel.map-panel--real {
+    display: block;
+  }
+}
+
+@media (max-width: 639px) {
+  .job-map {
+    height: 19rem;
+    min-height: 17rem;
+  }
+
+  .job-map-shell--route .job-map {
+    height: 21rem;
+  }
+
+  .job-map__attribution {
+    top: 0.35rem;
+    right: 0.35rem;
+    bottom: auto;
+    border-radius: 0.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-zoom-animated,
+  .leaflet-pan-anim .leaflet-tile,
+  .leaflet-fade-anim .leaflet-tile {
+    transition: none !important;
+  }
+}

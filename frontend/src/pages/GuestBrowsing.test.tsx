@@ -45,6 +45,17 @@ describe("guest job browsing", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/Maximum travel time/i)).not.toBeInTheDocument();
 
+    expect(screen.getByTestId("jobs-map")).toHaveAttribute(
+      "data-marker-count",
+      "4",
+    );
+    const mapToggle = screen.getByRole("button", { name: "Show Map" });
+    expect(mapToggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(mapToggle);
+    expect(
+      screen.getByRole("button", { name: "Show List" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
     fireEvent.change(screen.getByLabelText("Sort"), {
       target: { value: "distance" },
     });

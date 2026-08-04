@@ -10,6 +10,23 @@ Version 4.0 reduces accidental-publication risk by ignoring common private thesi
 
 Version 4.1 adds the restricted PESO/LGU reviewer workspace, employer and job-post verification, subdomain-aware access, an immutable Audit Log, and lifecycle protection that withdraws approved jobs when an employer loses verification.
 
+## Mapping prototype
+
+JobFinder displays OpenStreetMap tiles with required attribution, while the
+backend calculates route distance and geometry with JobFinder's own Dijkstra
+implementation. Leaflet only draws the returned GeoJSON line; it does not
+calculate the route.
+
+The current thesis seed contains a small four-node Angeles City demonstration
+graph. Its lines are graph previews, not turn-by-turn navigation. Importing a
+larger road graph, preserving road-edge geometry, and snapping a user's live
+position to the nearest supported node are separate dataset steps.
+
+For local testing, the frontend defaults to OpenStreetMap's public tile server.
+Before a public production launch, configure `VITE_MAP_TILE_URL` at frontend
+build time for a tile provider whose capacity and terms fit the deployment.
+Do not bulk-download or offline-cache public OpenStreetMap tiles.
+
 ## Run locally
 
 ```powershell

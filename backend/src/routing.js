@@ -109,6 +109,7 @@ export function calculateRoute(db, originNodeId, destinationNodeId) {
   if (coordinates.length === 1) coordinates.push([...coordinates[0]]);
 
   return {
+    algorithm: "dijkstra",
     routeId: `route-${originNodeId}-${destinationNodeId}`,
     mode,
     geometry: {

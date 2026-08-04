@@ -22,8 +22,14 @@ This guide deploys Version 4.1 as one Node.js service that serves both the built
 | `JOBFINDER_UPLOADS_PATH` | Persistent path such as `/app/storage/uploads` | Stores uploaded PDF resumes. |
 | `JOBFINDER_BACKUPS_PATH` | Persistent path such as `/app/storage/backups` | Stores completed local backup snapshots. |
 | `JOBFINDER_BACKUP_RETENTION_COUNT` | `7` or another value from 1 to 100 | Keeps the newest completed backups. |
+| `VITE_MAP_TILE_URL` | Approved HTTPS tile template, set before `npm run build` | Selects the Leaflet basemap provider; omit only for low-volume local testing with the public OpenStreetMap tile server. |
 
 Do not configure the three demo-account variables in production. Keep the database, uploads, and backups out of the public web root.
+
+The map always displays OpenStreetMap contributor attribution. Follow the
+selected tile provider's usage policy. The service worker intentionally ignores
+cross-origin map tiles, so JobFinder does not create a bulk or offline tile
+cache.
 
 ## Deploy with Docker
 

@@ -6,6 +6,7 @@ import {
   Filter,
   LoaderCircle,
   LocateFixed,
+  Map as MapIcon,
   MapPin,
   Search,
   Trash2,
@@ -15,6 +16,9 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import { useJobs } from "../features/jobs/JobsContext";
 import { JobCard } from "../features/jobs/JobCard";
+import type { RouteOption } from "../features/jobs/types";
+import { JobMap } from "../features/maps/JobMap";
+import { apiRequest } from "../lib/api";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
@@ -26,6 +30,12 @@ type LocationStatus =
   | "granted"
   | "denied"
   | "unsupported";
+
+type RouteApiResult = {
+  personalized: boolean;
+  route: RouteOption;
+  startingArea: string;
+};
 
 type SavedSearch = {
   alerts: boolean;
@@ -101,10 +111,16 @@ export function JobsPage() {
       ? sortBy
       : "newest";
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [mobileMapOpen, setMobileMapOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [locationStatus, setLocationStatus] =
     useState<LocationStatus>("idle");
-  const [browserLocationReady, setBrowserLocationReady] = useState(false);
+  const [browserLocation, setBrowserLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [mapRoute, setMapRoute] = useState<RouteApiResult | null>(null);
+  const [mapRouteError, setMapRouteError] = useState("");
   const isLoading = jobsLoading || previewState === "loading";
   const hasServiceError = Boolean(jobsError) || previewState === "error";
   const isOffline = !isOnline || previewState === "offline";
@@ -201,6 +217,23 @@ export function JobsPage() {
 
   const selectedJob =
     results.find((job) => job.id === selectedJobId) ?? results[0];
+  const mapJobs = useMemo(
+    () =>
+      results.flatMap((job) =>
+        typeof job.location.latitude === "number" &&
+        typeof job.location.longitude === "number"
+          ? [
+              {
+                id: job.id,
+                latitude: job.location.latitude,
+                longitude: job.location.longitude,
+                title: job.title,
+              },
+            ]
+          : [],
+      ),
+    [results],
+  );
 
   useEffect(() => {
     if (!results.length) {
@@ -212,6 +245,46 @@ export function JobsPage() {
       setSelectedJobId(results[0].id);
     }
   }, [results, selectedJobId]);
+
+  useEffect(() => {
+    if (!selectedJob) {
+      setMapRoute(null);
+      setMapRouteError("");
+      return;
+    }
+
+    if (import.meta.env.MODE === "test") {
+      setMapRoute({
+        personalized: false,
+        route: selectedJob.route,
+        startingArea: "Balibago Reference Area",
+      });
+      setMapRouteError("");
+      return;
+    }
+
+    let active = true;
+    setMapRoute(null);
+    setMapRouteError("");
+    apiRequest<RouteApiResult>(
+      `/jobs/${encodeURIComponent(selectedJob.id)}/route`,
+    )
+      .then((result) => {
+        if (active) setMapRoute(result);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setMapRouteError(
+          error instanceof Error
+            ? error.message
+            : "JobFinder could not calculate this route.",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedJob]);
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -329,12 +402,15 @@ export function JobsPage() {
 
     setLocationStatus("requesting");
     navigator.geolocation.getCurrentPosition(
-      () => {
-        setBrowserLocationReady(true);
+      (position) => {
+        setBrowserLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
         setLocationStatus("granted");
       },
       () => {
-        setBrowserLocationReady(false);
+        setBrowserLocation(null);
         setLocationStatus("denied");
       },
       { enableHighAccuracy: false, maximumAge: 300_000, timeout: 8_000 },
@@ -377,6 +453,15 @@ export function JobsPage() {
           >
             <Filter size={18} aria-hidden="true" />
             Filters
+          </button>
+          <button
+            aria-pressed={mobileMapOpen}
+            className="button button--secondary"
+            onClick={() => setMobileMapOpen((current) => !current)}
+            type="button"
+          >
+            <MapIcon size={18} aria-hidden="true" />
+            {mobileMapOpen ? "Show List" : "Show Map"}
           </button>
           <label className="sort-field mobile-sort-field">
             <span className="sr-only">Sort jobs</span>
@@ -580,7 +665,12 @@ export function JobsPage() {
           </details>
         </aside>
 
-        <section aria-label="Job results" className="results-panel">
+        <section
+          aria-label="Job results"
+          className={`results-panel${
+            mobileMapOpen ? " results-panel--mobile-hidden" : ""
+          }`}
+        >
           {activeQuery ||
           selectedWorkTypes.length ||
           minimumPay ||
@@ -791,7 +881,9 @@ export function JobsPage() {
         </section>
 
         <aside
-          className="map-panel"
+          className={`map-panel map-panel--real${
+            mobileMapOpen ? " map-panel--mobile-visible" : ""
+          }`}
           aria-label="Map results and textual route summary"
         >
           <div className="map-panel__heading">
@@ -824,48 +916,48 @@ export function JobsPage() {
                 browser settings.
               </span>
             </div>
-          ) : locationStatus === "granted" && browserLocationReady ? (
+          ) : locationStatus === "granted" && browserLocation ? (
             <div className="map-permission-note map-permission-note--success">
               <LocateFixed size={18} aria-hidden="true" />
               <span>
-                <strong>Location permission granted.</strong>
-                This frontend preview uses your location with the reference
-                map. Live coordinates will be used after the routing service
-                is connected.
+                <strong>Your position is shown.</strong>
+                The calculated route still begins at {mapRoute?.startingArea ??
+                  "the selected reference area"} until road-node snapping is
+                added.
               </span>
             </div>
           ) : null}
-          <div className="map-visual" aria-label="Interactive job result map">
-            <span aria-hidden="true" className="map-road map-road--one" />
-            <span aria-hidden="true" className="map-road map-road--two" />
-            <span aria-hidden="true" className="map-route" />
-            <span aria-hidden="true" className="map-pin map-pin--home">
-              H
-            </span>
-            {results.map((job, index) => (
-              <button
-                aria-label={`Select ${job.title} on the map`}
-                aria-pressed={selectedJob?.id === job.id}
-                className={`map-pin map-pin--job map-pin--${index + 1}`}
-                key={job.id}
-                onClick={() => setSelectedJobId(job.id)}
-                type="button"
-              >
-                {index + 1}
-              </button>
-            ))}
-          </div>
-          <div className="map-legend">
+          <JobMap
+            currentLocation={browserLocation}
+            jobs={mapJobs}
+            label="OpenStreetMap showing local job results and the JobFinder route"
+            onSelectJob={setSelectedJobId}
+            route={mapRoute?.route}
+            selectedJobId={selectedJob?.id}
+            testId="jobs-map"
+          />
+          <div aria-live="polite" className="map-legend">
             <strong>Map Summary</strong>
             {selectedJob ? (
               <p>
                 Selected job: {selectedJob.title}
                 <br />
-                About {selectedJob.route.distanceKm.toFixed(1)} km away.
+                {mapRoute
+                  ? `${mapRoute.route.distanceKm.toFixed(1)} km from ${mapRoute.startingArea}.`
+                  : mapRouteError || "Calculating the shortest route..."}
               </p>
             ) : (
               <p>No jobs match the selected filters.</p>
             )}
+            {mapRoute?.route.algorithm === "dijkstra" ? (
+              <p className="map-panel__source">
+                Shortest path calculated by JobFinder Dijkstra
+              </p>
+            ) : null}
+            <p>
+              Graph preview only. The line connects available JobFinder nodes;
+              it is not turn-by-turn road navigation.
+            </p>
           </div>
         </aside>
       </div>

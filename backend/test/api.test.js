@@ -148,6 +148,20 @@ function assertDistanceOnlyRoute(route) {
   );
 }
 
+function assertDijkstraLineString(route) {
+  assert.equal(route.algorithm, "dijkstra");
+  assert.equal(route.geometry.type, "LineString");
+  assert.ok(route.geometry.coordinates.length >= 2);
+  for (const coordinate of route.geometry.coordinates) {
+    assert.equal(coordinate.length, 2);
+    const [longitude, latitude] = coordinate;
+    assert.ok(Number.isFinite(longitude));
+    assert.ok(Number.isFinite(latitude));
+    assert.ok(longitude >= -180 && longitude <= 180);
+    assert.ok(latitude >= -90 && latitude <= 90);
+  }
+}
+
 test("development demo accounts can sign in", async () => {
   const accounts = [
     { email: demoAccounts.employerEmail, role: "employer" },
@@ -413,6 +427,10 @@ test("pending employer jobs require PESO/LGU approval and decisions are audited"
 test("public jobs never expose a guest match score", async () => {
   const health = await request("/api/health");
   assert.equal(health.response.status, 200);
+  assert.equal(
+    health.response.headers.get("permissions-policy"),
+    "geolocation=(self)",
+  );
 
   const result = await request("/api/jobs");
   assert.equal(result.response.status, 200);
@@ -441,6 +459,49 @@ test("public jobs stay visible and can be sorted by nearest distance", async () 
     result.body.jobs.map((job) => job.route.distanceKm),
     [3.1, 5.2, 7.8],
   );
+});
+
+test("route endpoint returns the Dijkstra path and never a stored fallback", async () => {
+  db.prepare(`
+    UPDATE geo_edges SET distance_km = 20
+    WHERE from_node_id = 'balibago' AND to_node_id = 'marquee'
+  `).run();
+
+  const indirect = await request(
+    "/api/jobs/junior-web-developer-pixelnorth/route",
+  );
+  assert.equal(indirect.response.status, 200);
+  assert.equal(indirect.body.personalized, false);
+  assertDijkstraLineString(indirect.body.route);
+  assert.equal(indirect.body.route.distanceKm, 9.6);
+  assert.deepEqual(indirect.body.route.geometry.coordinates, [
+    [120.5874, 15.1667],
+    [120.5882, 15.1458],
+    [120.6098, 15.1571],
+  ]);
+  assert.equal(
+    indirect.response.headers.get("cache-control"),
+    "private, no-store",
+  );
+  assert.equal(indirect.response.headers.get("vary"), "Cookie");
+
+  const listed = await request("/api/jobs?sort=nearest-distance");
+  const listedJob = listed.body.jobs.find(
+    (job) => job.id === "junior-web-developer-pixelnorth",
+  );
+  assert.equal(listedJob.route.distanceKm, 9.6);
+  assertDijkstraLineString(listedJob.route);
+  assert.equal("locationScore" in listedJob.route, false);
+
+  db.prepare(`
+    DELETE FROM geo_edges
+    WHERE from_node_id = 'marquee' OR to_node_id = 'marquee'
+  `).run();
+  const unavailable = await request(
+    "/api/jobs/junior-web-developer-pixelnorth/route",
+  );
+  assert.equal(unavailable.response.status, 422);
+  assert.equal(unavailable.body.error.code, "ROUTE_UNAVAILABLE");
 });
 
 test("an incomplete seeker profile never receives personalized match data", async () => {

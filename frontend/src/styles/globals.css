@@ -2628,92 +2628,6 @@ ol {
   display: none;
 }
 
-.map-visual {
-  position: relative;
-  height: 20rem;
-  margin-top: var(--space-2);
-  overflow: hidden;
-  border: 1px solid var(--blue-100);
-  border-radius: var(--radius-md);
-  background:
-    linear-gradient(32deg, transparent 44%, rgb(147 197 253 / 0.3) 45% 49%, transparent 50%),
-    linear-gradient(145deg, transparent 42%, rgb(191 219 254 / 0.35) 43% 47%, transparent 48%),
-    var(--blue-50);
-}
-
-.map-road {
-  position: absolute;
-  width: 150%;
-  height: 0.6rem;
-  border: 2px solid var(--white);
-  background: var(--slate-300);
-}
-
-.map-road--one {
-  top: 38%;
-  left: -22%;
-  rotate: -20deg;
-}
-
-.map-road--two {
-  top: 63%;
-  left: -18%;
-  rotate: 26deg;
-}
-
-.map-route {
-  position: absolute;
-  top: 28%;
-  left: 18%;
-  width: 58%;
-  height: 43%;
-  border-bottom: 4px dotted var(--blue-700);
-  border-left: 4px dotted var(--blue-700);
-  border-radius: 0 0 0 var(--radius-xl);
-}
-
-.map-pin {
-  position: absolute;
-  z-index: 2;
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border: 3px solid var(--white);
-  border-radius: 50% 50% 50% 0;
-  background: var(--blue-700);
-  box-shadow: var(--shadow-sm);
-  color: var(--white);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  rotate: -45deg;
-}
-
-.map-pin::first-letter {
-  rotate: 45deg;
-}
-
-.map-pin--home {
-  bottom: 16%;
-  left: 15%;
-  background: var(--navy-900);
-}
-
-.map-pin--1 {
-  top: 20%;
-  right: 17%;
-}
-
-.map-pin--2 {
-  top: 42%;
-  right: 37%;
-}
-
-.map-pin--3 {
-  top: 15%;
-  left: 34%;
-}
-
 .map-legend {
   margin-top: var(--space-1);
   padding: var(--space-1-5);
@@ -3398,17 +3312,6 @@ ol {
 .job-result-selectable.is-selected .job-card {
   border-color: var(--blue-500);
   box-shadow: 0 0 0 3px var(--blue-100);
-}
-
-.map-pin--job {
-  cursor: pointer;
-}
-
-.map-pin--job[aria-pressed="true"] {
-  background: var(--green-700);
-  box-shadow:
-    0 0 0 3px var(--green-100),
-    var(--shadow-sm);
 }
 
 @media (min-width: 640px) {
@@ -4340,19 +4243,6 @@ ol {
   }
 
   .jobs-page .map-panel__heading > .icon-button {
-    display: none;
-  }
-
-  .jobs-page .map-visual {
-    height: 17.875rem;
-  }
-
-  .jobs-page .map-pin {
-    border-radius: var(--radius-pill);
-    rotate: 0deg;
-  }
-
-  .jobs-page .map-pin--home {
     display: none;
   }
 
@@ -7841,27 +7731,6 @@ body,
   border: 0;
 }
 
-.map-visual {
-  background: #f5ecd3;
-}
-
-.map-road {
-  background: var(--color-border);
-}
-
-.map-route {
-  border-color: var(--palette-green);
-}
-
-.map-pin--job {
-  background: var(--palette-indigo);
-}
-
-.map-pin--job[aria-pressed="true"] {
-  background: var(--palette-deep-green);
-  box-shadow: 0 0 0 3px var(--green-100);
-}
-
 .job-detail-page > .back-link {
   color: var(--palette-green);
 }
@@ -8189,74 +8058,6 @@ body,
   color: var(--palette-navy);
   font-size: var(--text-2xl);
   line-height: var(--leading-tight);
-}
-
-.route-map-visual {
-  position: relative;
-  height: clamp(16rem, 52vw, 23rem);
-  margin-top: var(--space-3);
-  overflow: hidden;
-  border: 1px solid #dfd3b8;
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(135deg, rgb(238 221 169 / 0.34), transparent 48%),
-    #f5ecd3;
-}
-
-.route-map-visual__road {
-  position: absolute;
-  left: -10%;
-  width: 120%;
-  height: 1.5rem;
-  border-block: 0.25rem solid rgb(255 255 255 / 0.92);
-  background: #d8d1c6;
-}
-
-.route-map-visual__road--a {
-  top: 34%;
-  rotate: -18deg;
-}
-
-.route-map-visual__road--b {
-  top: 61%;
-  rotate: 24deg;
-}
-
-.route-map-visual__line {
-  position: absolute;
-  top: 20%;
-  left: 25%;
-  width: 50%;
-  height: 57%;
-  border-bottom: 0.25rem dotted var(--palette-green);
-  border-left: 0.25rem dotted var(--palette-green);
-  border-radius: 0 0 0 1.25rem;
-}
-
-.route-map-visual__point {
-  position: absolute;
-  z-index: 2;
-  display: grid;
-  width: 2.75rem;
-  height: 2.75rem;
-  place-items: center;
-  border: 0.25rem solid var(--white);
-  border-radius: 50%;
-  background: var(--palette-navy);
-  box-shadow: var(--shadow-sm);
-  color: var(--white);
-  font-weight: 800;
-}
-
-.route-map-visual__point--start {
-  top: 14%;
-  left: calc(25% - 1.25rem);
-}
-
-.route-map-visual__point--end {
-  right: calc(25% - 1.25rem);
-  bottom: 16%;
-  background: var(--palette-green);
 }
 
 .route-text-alternative {

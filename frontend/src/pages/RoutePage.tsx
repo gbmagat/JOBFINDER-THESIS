@@ -9,15 +9,9 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useAuth } from "../features/auth/AuthContext";
 import { useJobs } from "../features/jobs/JobsContext";
 import type { RouteOption } from "../features/jobs/types";
-import {
-  DEFAULT_PROFILE_DETAILS,
-  PROFILE_DETAILS_KEY,
-} from "../features/profile/storage";
-import { usePersistentState } from "../lib/usePersistentState";
-import { userStorageKey } from "../lib/storage-keys";
+import { JobMap } from "../features/maps/JobMap";
 import { apiRequest } from "../lib/api";
 
 const modeLabels = {
@@ -28,14 +22,9 @@ const modeLabels = {
 } as const;
 
 export function RoutePage() {
-  const { user } = useAuth();
   const { jobId = "" } = useParams();
   const { getJob, isLoading, loadJob } = useJobs();
   const job = getJob(jobId);
-  const [profileDetails] = usePersistentState(
-    userStorageKey(PROFILE_DETAILS_KEY, user?.id),
-    DEFAULT_PROFILE_DETAILS,
-  );
   const [routeResult, setRouteResult] = useState<{
     personalized: boolean;
     route: RouteOption;
@@ -48,7 +37,7 @@ export function RoutePage() {
   }, [isLoading, job, jobId, loadJob]);
 
   useEffect(() => {
-    if (!job || import.meta.env.MODE === "test") return;
+    if (!job) return;
 
     let active = true;
     setRouteResult(null);
@@ -88,11 +77,7 @@ export function RoutePage() {
     );
   }
 
-  const route = routeResult?.route ?? job.route;
-  const startingArea =
-    routeResult?.startingArea ||
-    `${profileDetails.barangay}, ${profileDetails.city}`;
-
+  const route = routeResult?.route ?? null;
   return (
     <div className="page route-page">
       <Link className="back-link" to={`/jobs/${job.id}`}>
@@ -102,28 +87,38 @@ export function RoutePage() {
       <header className="page-header">
         <span className="eyebrow">
           <Navigation size={16} aria-hidden="true" />
-          Public route preview
+          Graph route preview
         </span>
         <h1>Shortest Route to {job.employerName}</h1>
         <p>
-          Starting area used for this route: {startingArea}. Destination:{" "}
-          {job.location.venue}. No sign in is required to view this reference
-          route.
+          {routeResult
+            ? `Starting area: ${routeResult.startingArea}. `
+            : "JobFinder is selecting the available reference starting area. "}
+          Destination: {job.location.venue}. This route can be viewed without
+          signing in.
         </p>
       </header>
 
       {routeError ? (
-        <aside className="notice" role="status">
+        <aside className="notice notice--warning" role="alert">
           <Info size={20} aria-hidden="true" />
           <p>
-            {routeError} The listing&apos;s saved reference route is shown
-            below.
+            {routeError} JobFinder will not substitute a route that was not
+            calculated by Dijkstra.
           </p>
         </aside>
       ) : null}
 
-      <div className="route-layout">
-        <div className="route-main">
+      {!route && !routeError ? (
+        <section className="status-state" aria-live="polite">
+          <h2>Calculating the Shortest Route</h2>
+          <p>JobFinder is running Dijkstra on the available road graph.</p>
+        </section>
+      ) : null}
+
+      {route ? (
+        <div className="route-layout">
+          <div className="route-main">
           <section className="route-map-card" aria-labelledby="route-map-title">
             <div className="route-map-card__heading">
               <div>
@@ -134,20 +129,18 @@ export function RoutePage() {
                 {modeLabels[route.mode]}
               </span>
             </div>
-            <div className="route-map-visual" aria-hidden="true">
-              <span className="route-map-visual__road route-map-visual__road--a" />
-              <span className="route-map-visual__road route-map-visual__road--b" />
-              <span className="route-map-visual__line" />
-              <span className="route-map-visual__point route-map-visual__point--start">
-                A
-              </span>
-              <span className="route-map-visual__point route-map-visual__point--end">
-                B
-              </span>
-            </div>
+            <JobMap
+              className="job-map-shell--route"
+              label="OpenStreetMap displaying the route calculated by JobFinder Dijkstra"
+              route={route}
+              testId="route-map"
+            />
             <div className="route-text-alternative">
               <strong>Route in Words</strong>
               <p>{route.textSummary}</p>
+              {route.algorithm === "dijkstra" ? (
+                <small>Calculated by JobFinder Dijkstra</small>
+              ) : null}
             </div>
           </section>
 
@@ -168,9 +161,9 @@ export function RoutePage() {
               ))}
             </ol>
           </section>
-        </div>
+          </div>
 
-        <aside className="route-sidebar">
+          <aside className="route-sidebar">
           <section className="content-card">
             <h2>Route Summary</h2>
             <dl className="route-summary-list">
@@ -204,10 +197,12 @@ export function RoutePage() {
 
           <aside className="notice">
             <Info size={20} aria-hidden="true" />
-            <p>
-              This is a reference route, not live navigation. Confirm
-              current local road and transport conditions before leaving.
-            </p>
+              <p>
+                This is a graph-based reference route, not live navigation. Its
+                line connects the available JobFinder nodes and may not follow
+                every road bend. Confirm current local conditions before
+                leaving.
+              </p>
           </aside>
 
           <Link
@@ -216,8 +211,9 @@ export function RoutePage() {
           >
             Return to Job
           </Link>
-        </aside>
-      </div>
+          </aside>
+        </div>
+      ) : null}
     </div>
   );
 }

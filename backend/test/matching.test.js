@@ -23,6 +23,20 @@ const demoAccounts = {
   password: "test-password-123",
 };
 
+function assertDijkstraLineString(route) {
+  assert.equal(route.algorithm, "dijkstra");
+  assert.equal(route.geometry.type, "LineString");
+  assert.ok(route.geometry.coordinates.length >= 2);
+  for (const coordinate of route.geometry.coordinates) {
+    assert.equal(coordinate.length, 2);
+    const [longitude, latitude] = coordinate;
+    assert.ok(Number.isFinite(longitude));
+    assert.ok(Number.isFinite(latitude));
+    assert.ok(longitude >= -180 && longitude <= 180);
+    assert.ok(latitude >= -90 && latitude <= 90);
+  }
+}
+
 beforeEach(() => {
   db = createDatabase(":memory:", { seedDemo: true, demoAccounts });
 });
@@ -62,6 +76,9 @@ test("distance score decreases as the Dijkstra route gets farther", () => {
 
 test("Dijkstra returns a distance-only route without exposing a home address", () => {
   const route = calculateRoute(db, "balibago", "marquee");
+  assertDijkstraLineString(route);
+  assert.deepEqual(route.geometry.coordinates[0], [120.5874, 15.1667]);
+  assert.deepEqual(route.geometry.coordinates.at(-1), [120.6098, 15.1571]);
   assert.equal(route.distanceKm, 7.8);
   assert.equal("estimatedMinutes" in route, false);
   assert.equal("accessibilityStatus" in route, false);

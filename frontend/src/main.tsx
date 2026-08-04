@@ -4,10 +4,12 @@ import { RouterProvider } from "react-router-dom";
 import { AuthProvider } from "./features/auth/AuthContext";
 import { JobsProvider } from "./features/jobs/JobsContext";
 import { router } from "./app/router";
+import "leaflet/dist/leaflet.css";
 import "./styles/globals.css";
 import "./styles/application.css";
 import "./styles/auth-dialog.css";
 import "./styles/lgu.css";
+import "./styles/map.css";
 import "./styles/motion.css";
 
 const root = document.getElementById("root");

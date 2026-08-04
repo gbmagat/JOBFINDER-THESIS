@@ -63,6 +63,7 @@ export interface RouteStep {
 }
 
 export interface RouteOption {
+  algorithm?: "dijkstra";
   routeId: string;
   mode: TravelMode;
   geometry?: GeoJsonLineString;
