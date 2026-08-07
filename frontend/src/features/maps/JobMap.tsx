@@ -13,8 +13,8 @@ const OSM_ATTRIBUTION =
 const FIT_BOUNDS_OPTIONS: FitBoundsOptions = {
   animate: false,
   maxZoom: 15,
-  paddingTopLeft: [28, 28],
-  paddingBottomRight: [28, 88],
+  paddingTopLeft: [72, 72],
+  paddingBottomRight: [44, 88],
 };
 
 export interface JobMapPoint {
@@ -66,12 +66,33 @@ export function routeCoordinatesToLatLng(
   return positions;
 }
 
-function markerIcon(label: string, variant: string) {
+type MapMarkerVariant = "job" | "user" | "destination";
+
+const MAP_MARKER_GLYPHS: Record<MapMarkerVariant, string> = {
+  job: `
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>`,
+  user: `
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="7" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+    </svg>`,
+  destination: `
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <rect x="3" y="7" width="18" height="13" rx="2" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18M10 12v2h4v-2" />
+    </svg>`,
+};
+
+function markerIcon(variant: MapMarkerVariant) {
   return L.divIcon({
     className: "job-map-marker-host",
-    html: `<span class="job-map-marker job-map-marker--${variant}">${label}</span>`,
-    iconAnchor: [18, 18],
-    iconSize: [36, 36],
+    html: `<span class="job-map-marker job-map-marker--${variant}">${MAP_MARKER_GLYPHS[variant]}</span>`,
+    iconAnchor: [22, 22],
+    iconSize: [44, 44],
   });
 }
 
@@ -99,6 +120,15 @@ export function JobMap({
   const validJobCount = jobs.filter((job) =>
     isCoordinate(job.latitude, job.longitude),
   ).length;
+  const mapLocation =
+    currentLocation &&
+    isCoordinate(currentLocation.latitude, currentLocation.longitude)
+      ? currentLocation
+      : null;
+  const visibleRoute = mapLocation ? route : null;
+  const visibleRoutePointCount = routeCoordinatesToLatLng(visibleRoute).length;
+  const hasRoute = visibleRoutePointCount >= 2;
+  const hasSelectedJob = Boolean(selectedJobId) || hasRoute;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -172,10 +202,18 @@ export function JobMap({
     overlays.clearLayers();
     const bounds = L.latLngBounds([]);
     boundsRef.current = bounds;
-    const routePositions = routeCoordinatesToLatLng(route);
+    const routePositions = routeCoordinatesToLatLng(visibleRoute);
     routePositions.forEach((position) => extendBounds(bounds, position));
 
     if (routePositions.length >= 2) {
+      L.polyline(routePositions, {
+        color: "#ffffff",
+        lineCap: "round",
+        lineJoin: "round",
+        opacity: 0.9,
+        weight: 10,
+      }).addTo(overlays);
+
       L.polyline(routePositions, {
         color: "#164135",
         lineCap: "round",
@@ -184,10 +222,6 @@ export function JobMap({
         weight: 6,
       }).addTo(overlays);
 
-      L.marker(routePositions[0], {
-        icon: markerIcon("A", "start"),
-        keyboard: false,
-      }).addTo(overlays);
       const routeEnd = routePositions.at(-1) as LatLngTuple;
       const selectedDestination = jobs.find(
         (job) =>
@@ -196,21 +230,30 @@ export function JobMap({
           job.longitude === routeEnd[1],
       );
       const endMarker = L.marker(routeEnd, {
-        icon: markerIcon("B", "end"),
+        icon: markerIcon("destination"),
         keyboard: Boolean(selectedDestination),
-        title: selectedDestination?.title ?? "Route destination",
+        title: selectedDestination
+          ? `Selected job: ${selectedDestination.title}`
+          : "Selected job destination",
       }).addTo(overlays);
       if (selectedDestination) {
+        const destinationTooltip = document.createElement("span");
+        destinationTooltip.textContent = `Selected job: ${selectedDestination.title}`;
         endMarker
-          .bindTooltip(selectedDestination.title, {
+          .bindTooltip(destinationTooltip, {
             direction: "top",
-            offset: [0, -10],
+            offset: [0, -14],
           })
           .on("click", () => onSelectJob?.(selectedDestination.id));
+      } else {
+        endMarker.bindTooltip("Selected job destination", {
+          direction: "top",
+          offset: [0, -14],
+        });
       }
     }
 
-    jobs.forEach((job, index) => {
+    jobs.forEach((job) => {
       if (!isCoordinate(job.latitude, job.longitude)) return;
       const position: LatLngTuple = [job.latitude, job.longitude];
       const routeEnd = routePositions.at(-1);
@@ -223,36 +266,42 @@ export function JobMap({
       }
       extendBounds(bounds, position);
       const marker = L.marker(position, {
-        icon: markerIcon(
-          String(index + 1),
-          selectedJobId === job.id ? "selected" : "job",
-        ),
+        icon: markerIcon(selectedJobId === job.id ? "destination" : "job"),
         keyboard: true,
-        title: job.title,
+        title:
+          selectedJobId === job.id
+            ? `Selected job: ${job.title}`
+            : `Job: ${job.title}`,
       }).addTo(overlays);
       const tooltip = document.createElement("span");
-      tooltip.textContent = job.title;
-      marker.bindTooltip(tooltip, { direction: "top", offset: [0, -10] });
+      tooltip.textContent =
+        selectedJobId === job.id
+          ? `Selected job: ${job.title}`
+          : job.title;
+      marker.bindTooltip(tooltip, { direction: "top", offset: [0, -14] });
       marker.on("click", () => onSelectJob?.(job.id));
     });
 
-    if (
-      currentLocation &&
-      isCoordinate(currentLocation.latitude, currentLocation.longitude)
-    ) {
+    if (mapLocation) {
       const position: LatLngTuple = [
-        currentLocation.latitude,
-        currentLocation.longitude,
+        mapLocation.latitude,
+        mapLocation.longitude,
       ];
-      L.circleMarker(position, {
-        color: "#ffffff",
-        fillColor: "#1e3054",
-        fillOpacity: 1,
-        radius: 8,
-        weight: 3,
+      extendBounds(bounds, position);
+      const userLocationMarker = L.marker(position, {
+        icon: markerIcon("user"),
+        keyboard: false,
+        title: "You are here",
       })
-        .bindTooltip("Your current position")
+        .bindTooltip("You are here", {
+          direction: "top",
+          offset: [0, -14],
+        })
         .addTo(overlays);
+      userLocationMarker
+        .getElement()
+        ?.setAttribute("aria-label", "You are here");
+      userLocationMarker.getElement()?.setAttribute("role", "img");
     }
 
     if (bounds.isValid()) {
@@ -260,40 +309,74 @@ export function JobMap({
     } else {
       map.setView(ANGELES_CITY_CENTER, 13, { animate: false });
     }
-  }, [currentLocation, jobs, onSelectJob, route, selectedJobId]);
+  }, [jobs, mapLocation, onSelectJob, selectedJobId, visibleRoute]);
 
   return (
     <div
       className={`job-map-shell${className ? ` ${className}` : ""}`}
       data-marker-count={validJobCount}
-      data-route-id={route?.routeId ?? ""}
+      data-route-id={hasRoute ? visibleRoute?.routeId ?? "" : ""}
       data-testid={testId}
     >
-      <div
-        aria-label={label}
-        className="job-map"
-        ref={containerRef}
-        role="region"
-      />
-      {tileError ? (
-        <p className="job-map__status" role="status">
-          Map tiles are temporarily unavailable. The route summary remains
-          available below.
-        </p>
+      <div className="job-map__viewport">
+        <div
+          aria-label={label}
+          className="job-map"
+          ref={containerRef}
+          role="region"
+        />
+        {tileError ? (
+          <p className="job-map__status" role="status">
+            Map tiles are temporarily unavailable. The route summary remains
+            available below.
+          </p>
+        ) : null}
+        <a
+          className="job-map__attribution"
+          href="https://www.openstreetmap.org/copyright"
+          rel="noreferrer"
+          target="_blank"
+        >
+          © OpenStreetMap contributors
+        </a>
+      </div>
+      {mapLocation || hasSelectedJob ? (
+        <div
+          aria-label="Map marker key"
+          className="job-map__legend"
+          role="list"
+        >
+          {mapLocation ? (
+            <span className="job-map__legend-item" role="listitem">
+              <span
+                aria-hidden="true"
+                className="job-map__legend-symbol job-map__legend-symbol--user"
+              />
+              You are here
+            </span>
+          ) : null}
+          {hasSelectedJob ? (
+            <span className="job-map__legend-item" role="listitem">
+              <span
+                aria-hidden="true"
+                className="job-map__legend-symbol job-map__legend-symbol--destination"
+              />
+              Selected job
+            </span>
+          ) : null}
+        </div>
       ) : null}
-      <a
-        className="job-map__attribution"
-        href="https://www.openstreetmap.org/copyright"
-        rel="noreferrer"
-        target="_blank"
-      >
-        © OpenStreetMap contributors
-      </a>
       <p className="sr-only">
         {validJobCount} job {validJobCount === 1 ? "marker" : "markers"} shown.
-        {route?.geometry?.coordinates.length
-          ? ` Route ${route.routeId} contains ${route.geometry.coordinates.length} mapped points.`
-          : " No route line is available."}
+        {hasRoute && visibleRoute
+          ? ` Your location and the selected job are shown. Route ${visibleRoute.routeId} runs from your location to the selected job and contains ${visibleRoutePointCount} mapped points.`
+          : hasSelectedJob && mapLocation
+            ? " Your location and the selected job are shown. No route line is available."
+            : hasSelectedJob
+              ? " Only the selected job location is shown. Your location is not available."
+              : mapLocation
+                ? " Your location is also shown. No route line is available."
+                : " No route line is available."}
       </p>
     </div>
   );

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import {
@@ -58,7 +58,7 @@ describe("HomePage guest experience", () => {
 });
 
 describe("HomePage job seeker state", () => {
-  it("starts a new account without saved jobs or applications", () => {
+  it("starts a new account with profile setup guidance", () => {
     window.localStorage.setItem(
       AUTH_USER_STORAGE_KEY,
       JSON.stringify({
@@ -77,20 +77,9 @@ describe("HomePage job seeker state", () => {
       </MemoryRouter>,
     );
 
-    const summary = screen.getByRole("region", {
-      name: "Job seeker summary",
-    });
-    const savedJobs = within(summary)
-      .getByText("Saved Jobs")
-      .closest(".dashboard-stat");
-    const applications = within(summary)
-      .getByText("Active Applications")
-      .closest(".dashboard-stat");
-
-    expect(savedJobs).toHaveTextContent("0");
-    expect(applications).toHaveTextContent("0");
-    expect(applications).toHaveTextContent("No active applications yet");
-    expect(summary).toHaveTextContent("Complete your profile to see matches");
+    expect(
+      screen.queryByRole("region", { name: "Job seeker summary" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Explore Local Jobs" }),
     ).toBeInTheDocument();

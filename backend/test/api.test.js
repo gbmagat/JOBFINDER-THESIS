@@ -461,6 +461,28 @@ test("public jobs stay visible and can be sorted by nearest distance", async () 
   );
 });
 
+test("route endpoint requires valid device coordinates", async () => {
+  const missing = await request(
+    "/api/jobs/it-support-assistant-lumina-tech/route",
+  );
+  assert.equal(missing.response.status, 400);
+  assert.equal(missing.body.error.code, "VALIDATION_ERROR");
+  assert.deepEqual(Object.keys(missing.body.error.fields).sort(), [
+    "latitude",
+    "longitude",
+  ]);
+
+  const invalid = await request(
+    "/api/jobs/it-support-assistant-lumina-tech/route?latitude=91&longitude=not-a-coordinate",
+  );
+  assert.equal(invalid.response.status, 400);
+  assert.equal(invalid.body.error.code, "VALIDATION_ERROR");
+  assert.deepEqual(Object.keys(invalid.body.error.fields).sort(), [
+    "latitude",
+    "longitude",
+  ]);
+});
+
 test("route endpoint returns the Dijkstra path and never a stored fallback", async () => {
   db.prepare(`
     UPDATE geo_edges SET distance_km = 20
@@ -468,14 +490,29 @@ test("route endpoint returns the Dijkstra path and never a stored fallback", asy
   `).run();
 
   const indirect = await request(
-    "/api/jobs/junior-web-developer-pixelnorth/route",
+    "/api/jobs/junior-web-developer-pixelnorth/route?latitude=15.1459&longitude=120.5883",
   );
   assert.equal(indirect.response.status, 200);
   assert.equal(indirect.body.personalized, false);
+  assert.equal(indirect.body.originKind, "device");
+  assert.deepEqual(indirect.body.origin, {
+    latitude: 15.1459,
+    longitude: 120.5883,
+  });
+  assert.equal(indirect.body.startingArea, "Your Current Location");
+  assert.deepEqual(indirect.body.dijkstraStart, {
+    nodeId: "nepo-center",
+    nodeName: "Nepo Center",
+    latitude: 15.1458,
+    longitude: 120.5882,
+    snapDistanceKm: 0.015,
+  });
   assertDijkstraLineString(indirect.body.route);
-  assert.equal(indirect.body.route.distanceKm, 9.6);
+  assert.equal(indirect.body.route.distanceKm, 4.415);
+  assert.equal(indirect.body.route.dijkstraDistanceKm, 4.4);
+  assert.equal(indirect.body.route.originConnectorDistanceKm, 0.015);
   assert.deepEqual(indirect.body.route.geometry.coordinates, [
-    [120.5874, 15.1667],
+    [120.5883, 15.1459],
     [120.5882, 15.1458],
     [120.6098, 15.1571],
   ]);
@@ -498,7 +535,7 @@ test("route endpoint returns the Dijkstra path and never a stored fallback", asy
     WHERE from_node_id = 'marquee' OR to_node_id = 'marquee'
   `).run();
   const unavailable = await request(
-    "/api/jobs/junior-web-developer-pixelnorth/route",
+    "/api/jobs/junior-web-developer-pixelnorth/route?latitude=15.1459&longitude=120.5883",
   );
   assert.equal(unavailable.response.status, 422);
   assert.equal(unavailable.body.error.code, "ROUTE_UNAVAILABLE");
@@ -527,10 +564,16 @@ test("an incomplete seeker profile never receives personalized match data", asyn
   assert.equal("fit" in incompleteDetail.body.job, false);
 
   const incompleteRoute = await request(
-    "/api/jobs/it-support-assistant-lumina-tech/route",
+    "/api/jobs/it-support-assistant-lumina-tech/route?latitude=15.1666&longitude=120.5875",
     { headers },
   );
+  assert.equal(incompleteRoute.response.status, 200);
   assert.equal(incompleteRoute.body.personalized, false);
+  assert.equal(incompleteRoute.body.originKind, "device");
+  assert.equal(incompleteRoute.body.dijkstraStart.nodeId, "balibago");
+  assert.equal(incompleteRoute.body.route.dijkstraDistanceKm, 5.2);
+  assert.equal(incompleteRoute.body.route.originConnectorDistanceKm, 0.015);
+  assert.equal(incompleteRoute.body.route.distanceKm, 5.215);
   assertDistanceOnlyRoute(incompleteRoute.body.route);
 
   await request("/api/profile", {
@@ -568,6 +611,46 @@ test("protected account routes require a signed-in job seeker", async () => {
   });
   assert.equal(wrongRole.response.status, 403);
   assert.equal(wrongRole.body.error.code, "ROLE_REQUIRED");
+});
+
+test("a seeker can pin an approximate home area without storing coordinates", async () => {
+  const seeker = await register("job-seeker", "home-pin@example.com");
+  const headers = { cookie: seeker.cookie };
+  const resolved = await request("/api/profile/location/resolve", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ latitude: 15.1459, longitude: 120.5883 }),
+  });
+
+  assert.equal(resolved.response.status, 200);
+  assert.deepEqual(resolved.body.location, {
+    areaName: "Nepo Center",
+    barangay: "Sto. Rosario",
+    city: "Angeles City",
+    homeNodeId: "nepo-center",
+  });
+  assert.equal("latitude" in resolved.body.location, false);
+  assert.equal("longitude" in resolved.body.location, false);
+
+  const unchanged = await request("/api/profile", { headers });
+  assert.equal(unchanged.body.profile.homeNodeId, "balibago");
+  assert.equal(unchanged.body.profile.barangay, "");
+
+  const invalid = await request("/api/profile/location/resolve", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ latitude: "15.1459", longitude: 120.5883 }),
+  });
+  assert.equal(invalid.response.status, 400);
+  assert.equal(invalid.body.error.code, "INVALID_LOCATION");
+
+  const outside = await request("/api/profile/location/resolve", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ latitude: 14.5995, longitude: 120.9842 }),
+  });
+  assert.equal(outside.response.status, 422);
+  assert.equal(outside.body.error.code, "LOCATION_OUTSIDE_SERVICE_AREA");
 });
 
 test("a seeker profile enables explainable ontology and location scores", async () => {
@@ -608,11 +691,22 @@ test("a seeker profile enables explainable ontology and location scores", async 
   assertDistanceOnlyRoute(result.body.job.fit.route);
 
   const route = await request(
-    "/api/jobs/it-support-assistant-lumina-tech/route",
+    "/api/jobs/it-support-assistant-lumina-tech/route?latitude=15.1459&longitude=120.5883",
     { headers },
   );
   assert.equal(route.response.status, 200);
   assert.equal(route.body.personalized, true);
+  assert.equal(route.body.originKind, "device");
+  assert.equal(route.body.dijkstraStart.nodeId, "nepo-center");
+  assert.equal(route.body.dijkstraStart.nodeName, "Nepo Center");
+  assert.equal(route.body.startingArea, "Your Current Location");
+  assert.deepEqual(route.body.route.geometry.coordinates, [
+    [120.5883, 15.1459],
+    [120.5882, 15.1458],
+  ]);
+  assert.equal(route.body.route.distanceKm, 0.015);
+  assert.equal(route.body.route.dijkstraDistanceKm, 0);
+  assert.equal(route.body.route.originConnectorDistanceKm, 0.015);
   assertDistanceOnlyRoute(route.body.route);
 });
 

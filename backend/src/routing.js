@@ -71,6 +71,60 @@ function round(value, digits = 1) {
 }
 
 const DISTANCE_SCORE_SCALE_KM = 10;
+const EARTH_RADIUS_KM = 6371.0088;
+const EFFECTIVELY_IDENTICAL_COORDINATE_KM = 0.001;
+
+function degreesToRadians(value) {
+  return (value * Math.PI) / 180;
+}
+
+function geographicDistanceKm(
+  startLatitude,
+  startLongitude,
+  endLatitude,
+  endLongitude,
+) {
+  const latitudeDelta = degreesToRadians(endLatitude - startLatitude);
+  const longitudeDelta = degreesToRadians(endLongitude - startLongitude);
+  const startLatitudeRadians = degreesToRadians(startLatitude);
+  const endLatitudeRadians = degreesToRadians(endLatitude);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(startLatitudeRadians) *
+      Math.cos(endLatitudeRadians) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  const halfChord = Math.min(1, Math.sqrt(Math.max(0, haversine)));
+  return 2 * EARTH_RADIUS_KM * Math.asin(halfChord);
+}
+
+export function findNearestGeoNode(db, latitude, longitude) {
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  let nearestNode = null;
+  for (const node of db
+    .prepare("SELECT * FROM geo_nodes ORDER BY id")
+    .all()) {
+    const distanceKm = geographicDistanceKm(
+      latitude,
+      longitude,
+      node.latitude,
+      node.longitude,
+    );
+    if (!nearestNode || distanceKm < nearestNode.distanceKm) {
+      nearestNode = { ...node, distanceKm };
+    }
+  }
+  return nearestNode;
+}
 
 export function calculateDistanceScore(distanceKm) {
   if (!Number.isFinite(distanceKm) || distanceKm < 0) return 0;
@@ -129,5 +183,62 @@ export function calculateRoute(db, originNodeId, destinationNodeId) {
         : `The shortest mapped route is ${distanceKm} km.`,
     isEstimate: true,
     locationScore: calculateDistanceScore(distanceKm),
+  };
+}
+
+export function calculateRouteFromCoordinates(
+  db,
+  latitude,
+  longitude,
+  destinationNodeId,
+) {
+  const nearestNode = findNearestGeoNode(db, latitude, longitude);
+  if (!nearestNode) return null;
+
+  const route = calculateRoute(db, nearestNode.id, destinationNodeId);
+  if (!route) return null;
+
+  const originConnectorDistanceKm = round(nearestNode.distanceKm, 3);
+  const dijkstraDistanceKm = route.distanceKm;
+  const distanceKm = round(
+    originConnectorDistanceKm + dijkstraDistanceKm,
+    3,
+  );
+
+  const coordinates = [[longitude, latitude]];
+  for (const coordinate of route.geometry.coordinates) {
+    const previous = coordinates.at(-1);
+    const distanceKm = geographicDistanceKm(
+      previous[1],
+      previous[0],
+      coordinate[1],
+      coordinate[0],
+    );
+    if (distanceKm > EFFECTIVELY_IDENTICAL_COORDINATE_KM) {
+      coordinates.push(coordinate);
+    }
+  }
+  if (coordinates.length === 1) coordinates.push([...coordinates[0]]);
+
+  return {
+    route: {
+      ...route,
+      distanceKm,
+      dijkstraDistanceKm,
+      originConnectorDistanceKm,
+      geometry: {
+        ...route.geometry,
+        coordinates,
+      },
+      locationScore: calculateDistanceScore(distanceKm),
+      textSummary: `Your current location is ${originConnectorDistanceKm} km from ${nearestNode.name}. ${route.textSummary} The total mapped distance is ${distanceKm} km.`,
+    },
+    dijkstraStart: {
+      nodeId: nearestNode.id,
+      nodeName: nearestNode.name,
+      latitude: nearestNode.latitude,
+      longitude: nearestNode.longitude,
+      snapDistanceKm: originConnectorDistanceKm,
+    },
   };
 }

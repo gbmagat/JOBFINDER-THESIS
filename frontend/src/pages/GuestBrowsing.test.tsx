@@ -1,15 +1,53 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "../features/auth/AuthContext";
 import { JobDetailPage } from "./JobDetailPage";
 import { JobsPage } from "./JobsPage";
 
+const originalGeolocation = Object.getOwnPropertyDescriptor(
+  window.navigator,
+  "geolocation",
+);
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  vi.restoreAllMocks();
+  if (originalGeolocation) {
+    Object.defineProperty(
+      window.navigator,
+      "geolocation",
+      originalGeolocation,
+    );
+  } else {
+    Reflect.deleteProperty(window.navigator, "geolocation");
+  }
 });
+
+function allowCurrentLocation() {
+  Object.defineProperty(window.navigator, "geolocation", {
+    configurable: true,
+    value: {
+      getCurrentPosition: vi.fn((success: PositionCallback) => {
+        success({
+          coords: {
+            latitude: 15.155,
+            longitude: 120.595,
+          },
+        } as GeolocationPosition);
+      }),
+    },
+  });
+}
 
 function renderGuestRoute(path: string, routePath: string, element: ReactNode) {
   return render(
@@ -24,7 +62,7 @@ function renderGuestRoute(path: string, routePath: string, element: ReactNode) {
 }
 
 describe("guest job browsing", () => {
-  it("does not show personalized percentages in job results", () => {
+  it("does not show personalized percentages in job results", async () => {
     const { container } = renderGuestRoute("/jobs", "/jobs", <JobsPage />);
 
     expect(
@@ -45,16 +83,68 @@ describe("guest job browsing", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/Maximum travel time/i)).not.toBeInTheDocument();
 
-    expect(screen.getByTestId("jobs-map")).toHaveAttribute(
+    const jobsMap = screen.getByTestId("jobs-map");
+    expect(jobsMap).toHaveAttribute(
       "data-marker-count",
       "4",
     );
+    expect(jobsMap).toHaveAttribute("data-route-id", "");
+    expect(
+      screen.getByRole("heading", { name: "4 Jobs Shown" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Shortest path calculated by JobFinder Dijkstra"),
+    ).not.toBeInTheDocument();
     const mapToggle = screen.getByRole("button", { name: "Show Map" });
     expect(mapToggle).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(mapToggle);
     expect(
       screen.getByRole("button", { name: "Show List" }),
     ).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Select IT Support Assistant on map",
+      }),
+    );
+    expect(screen.queryByText(/Show(?:ing)? on Map/i)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(jobsMap).toHaveAttribute("data-marker-count", "1");
+      expect(jobsMap).toHaveAttribute("data-route-id", "");
+    });
+    expect(
+      screen.getByRole("heading", { name: "1 Selected Job" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(
+        "OpenStreetMap showing only IT Support Assistant. Use location to calculate a route.",
+      ),
+    ).toBeInTheDocument();
+    const markerKey = screen.getByRole("list", { name: "Map marker key" });
+    expect(within(markerKey).getByText("Selected job")).toBeInTheDocument();
+    expect(within(markerKey).queryByText("You are here")).not.toBeInTheDocument();
+    expect(within(markerKey).queryByText("Starting area")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Shortest path calculated by JobFinder Dijkstra"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Deselect IT Support Assistant and show all jobs on map",
+      }),
+    );
+    await waitFor(() => {
+      expect(jobsMap).toHaveAttribute("data-marker-count", "4");
+      expect(jobsMap).toHaveAttribute("data-route-id", "");
+    });
+    expect(
+      screen.getByRole("heading", { name: "4 Jobs Shown" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Select IT Support Assistant on map",
+      }),
+    ).toHaveAttribute("aria-pressed", "false");
 
     fireEvent.change(screen.getByLabelText("Sort"), {
       target: { value: "distance" },
@@ -68,6 +158,50 @@ describe("guest job browsing", () => {
       "IT Support Assistant",
       "Junior Web Developer",
     ]);
+  });
+
+  it("shows the user, selected job, and Dijkstra route after location access", async () => {
+    allowCurrentLocation();
+    renderGuestRoute("/jobs", "/jobs", <JobsPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use current location" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("You are here")).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Select IT Support Assistant on map",
+      }),
+    );
+
+    const jobsMap = screen.getByTestId("jobs-map");
+    await waitFor(() => {
+      expect(jobsMap).toHaveAttribute("data-marker-count", "1");
+      expect(jobsMap.getAttribute("data-route-id")).not.toBe("");
+    });
+    const markerKey = screen.getByRole("list", { name: "Map marker key" });
+    expect(within(markerKey).getByText("You are here")).toBeInTheDocument();
+    expect(within(markerKey).getByText("Selected job")).toBeInTheDocument();
+    expect(within(markerKey).queryByText("Starting area")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Shortest path calculated by JobFinder Dijkstra"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Deselect IT Support Assistant and show all jobs on map",
+      }),
+    );
+    await waitFor(() => {
+      expect(jobsMap).toHaveAttribute("data-marker-count", "4");
+      expect(jobsMap).toHaveAttribute("data-route-id", "");
+    });
+    expect(
+      screen.queryByText("Shortest path calculated by JobFinder Dijkstra"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps public details and route distance visible without time or a match score", () => {

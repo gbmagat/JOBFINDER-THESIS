@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RouteOption } from "../jobs/types";
 import { JobMap, routeCoordinatesToLatLng } from "./JobMap";
@@ -42,16 +42,10 @@ describe("JobMap", () => {
     ]);
   });
 
-  it("exposes stable map metadata and an accessible label", () => {
+  it("shows only the selected job when the user location is unavailable", () => {
     render(
       <JobMap
         jobs={[
-          {
-            id: "job-one",
-            latitude: 15.1667,
-            longitude: 120.5874,
-            title: "First Job",
-          },
           {
             id: "job-two",
             latitude: 15.1458,
@@ -61,13 +55,14 @@ describe("JobMap", () => {
         ]}
         label="Map showing local jobs and a Dijkstra route"
         route={route}
+        selectedJobId="job-two"
         testId="test-job-map"
       />,
     );
 
     const map = screen.getByTestId("test-job-map");
-    expect(map).toHaveAttribute("data-marker-count", "2");
-    expect(map).toHaveAttribute("data-route-id", "route-test-dijkstra");
+    expect(map).toHaveAttribute("data-marker-count", "1");
+    expect(map).toHaveAttribute("data-route-id", "");
     expect(
       screen.getByRole("region", {
         name: "Map showing local jobs and a Dijkstra route",
@@ -75,12 +70,52 @@ describe("JobMap", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "2 job markers shown. Route route-test-dijkstra contains 2 mapped points.",
+        "1 job marker shown. Only the selected job location is shown. Your location is not available.",
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "© OpenStreetMap contributors" }),
     ).toHaveAttribute("href", "https://www.openstreetmap.org/copyright");
+
+    const markerKey = screen.getByRole("list", { name: "Map marker key" });
+    expect(within(markerKey).getByText("Selected job")).toBeInTheDocument();
+    expect(within(markerKey).queryByText("You are here")).not.toBeInTheDocument();
+    expect(within(markerKey).queryByText("Starting area")).not.toBeInTheDocument();
+  });
+
+  it("shows the user and selected job when a valid location is available", () => {
+    render(
+      <JobMap
+        currentLocation={{ latitude: 15.155, longitude: 120.595 }}
+        jobs={[
+          {
+            id: "job-two",
+            latitude: 15.1458,
+            longitude: 120.5882,
+            title: "Second Job",
+          },
+        ]}
+        label="Map with device location"
+        route={route}
+        selectedJobId="job-two"
+        testId="device-location-map"
+      />,
+    );
+
+    expect(screen.getByTestId("device-location-map")).toHaveAttribute(
+      "data-route-id",
+      "route-test-dijkstra",
+    );
+    const markerKey = screen.getByRole("list", { name: "Map marker key" });
+    expect(within(markerKey).getByText("You are here")).toBeInTheDocument();
+    expect(within(markerKey).getByText("Selected job")).toBeInTheDocument();
+    expect(within(markerKey).queryByText("Starting area")).not.toBeInTheDocument();
+    expect(within(markerKey).queryByText("Device location")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "1 job marker shown. Your location and the selected job are shown. Route route-test-dijkstra runs from your location to the selected job and contains 2 mapped points.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("announces when no route line is available", () => {

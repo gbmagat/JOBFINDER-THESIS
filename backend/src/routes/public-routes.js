@@ -2,7 +2,20 @@ import { Router } from "express";
 import { isJobAvailable, rowToJob } from "../db.js";
 import { sendError } from "../http.js";
 import { getUserMatch } from "../matching.js";
-import { calculateRoute } from "../routing.js";
+import {
+  calculateRoute,
+  calculateRouteFromCoordinates,
+} from "../routing.js";
+
+function coordinateQueryValue(value, minimum, maximum) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) &&
+    coordinate >= minimum &&
+    coordinate <= maximum
+    ? coordinate
+    : null;
+}
 
 function withoutLocationScore(route) {
   if (!route) return null;
@@ -161,11 +174,34 @@ export function createPublicRouter(db) {
       return;
     }
 
+    const latitude = coordinateQueryValue(request.query.latitude, -90, 90);
+    const longitude = coordinateQueryValue(request.query.longitude, -180, 180);
+    const coordinateFields = {};
+    if (latitude === null) {
+      coordinateFields.latitude = "Provide a latitude from -90 to 90.";
+    }
+    if (longitude === null) {
+      coordinateFields.longitude = "Provide a longitude from -180 to 180.";
+    }
+    if (Object.keys(coordinateFields).length) {
+      sendError(
+        response,
+        400,
+        "VALIDATION_ERROR",
+        "Provide a valid current location before calculating a route.",
+        coordinateFields,
+      );
+      return;
+    }
+
     const fit = matchForRequest(db, request, job);
-    const route =
-      fit?.route ??
-      calculateRoute(db, "balibago", job.geoNodeId);
-    if (!route) {
+    const calculatedRoute = calculateRouteFromCoordinates(
+      db,
+      latitude,
+      longitude,
+      job.geoNodeId,
+    );
+    if (!calculatedRoute) {
       sendError(
         response,
         422,
@@ -174,10 +210,14 @@ export function createPublicRouter(db) {
       );
       return;
     }
+    const { route, dijkstraStart } = calculatedRoute;
     response.json({
       route: fit ? route : withoutLocationScore(route),
       personalized: Boolean(fit),
-      startingArea: fit ? "Saved Home Area" : "Balibago Reference Area",
+      originKind: "device",
+      origin: { latitude, longitude },
+      dijkstraStart,
+      startingArea: "Your Current Location",
     });
   });
 

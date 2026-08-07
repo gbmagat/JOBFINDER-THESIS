@@ -6,17 +6,9 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import {
-  SUBMITTED_APPLICATIONS_STORAGE_KEY,
-  type StoredSubmittedApplication,
-} from "../features/applications/storage-contract";
 import { useAuth } from "../features/auth/AuthContext";
 import { useJobs } from "../features/jobs/JobsContext";
 import { JobCard } from "../features/jobs/JobCard";
-import {
-  DEFAULT_SAVED_JOB_IDS,
-  SAVED_JOB_IDS_KEY,
-} from "../features/jobs/saved-jobs";
 import {
   DEFAULT_PROFILE_DETAILS,
   DEFAULT_PROFILE_SKILLS,
@@ -84,19 +76,6 @@ function JobSeekerHome({
   const [preferredWorkTypes, setPreferredWorkTypes] = useState<string[] | null>(
     import.meta.env.MODE === "test" ? DEFAULT_HOME_WORK_TYPES : null,
   );
-  const [savedJobIds, setSavedJobIds] = usePersistentState<string[]>(
-    userStorageKey(SAVED_JOB_IDS_KEY, userId),
-    DEFAULT_SAVED_JOB_IDS,
-  );
-  const [submittedApplications] = usePersistentState<
-    StoredSubmittedApplication[]
-  >(
-    userStorageKey(SUBMITTED_APPLICATIONS_STORAGE_KEY, userId),
-    [],
-  );
-  const [serverApplicationCount, setServerApplicationCount] = useState<
-    number | null
-  >(null);
   const [serverProfileComplete, setServerProfileComplete] = useState<
     boolean | null
   >(null);
@@ -105,15 +84,9 @@ function JobSeekerHome({
     if (import.meta.env.MODE === "test") return;
 
     let active = true;
-    Promise.all([
-      apiRequest<{ jobs: { id: string }[] }>("/saved-jobs"),
-      apiRequest<{ applications: unknown[] }>("/applications"),
-      apiRequest<{ profile: HomeApiProfile }>("/profile"),
-    ])
-      .then(([saved, submitted, { profile }]) => {
+    apiRequest<{ profile: HomeApiProfile }>("/profile")
+      .then(({ profile }) => {
         if (!active) return;
-        setSavedJobIds(saved.jobs.map((job) => job.id));
-        setServerApplicationCount(submitted.applications.length);
         setProfileDetails({
           fullName: profile.fullName,
           mobileNumber: profile.mobileNumber,
@@ -137,7 +110,6 @@ function JobSeekerHome({
   }, [
     setProfileDetails,
     setProfileSkills,
-    setSavedJobIds,
     userId,
   ]);
   const hasProfileDetails = hasRequiredProfileDetails(profileDetails);
@@ -146,15 +118,10 @@ function JobSeekerHome({
     (import.meta.env.MODE === "test"
       ? hasProfileDetails && profileSkills.length > 0
       : serverProfileComplete === true);
-  const strongMatchCount = canShowPersonalizedMatch
-    ? allJobs.filter((job) => job.fit.overallScore >= 85).length
-    : 0;
   const profileSetupHref =
     hasProfileDetails && profileSkills.length === 0
       ? "/onboarding/skills"
       : "/onboarding/profile";
-  const activeApplicationCount =
-    serverApplicationCount ?? submittedApplications.length;
   const firstName = displayName.trim().split(/\s+/, 1)[0] || "there";
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -202,32 +169,6 @@ function JobSeekerHome({
           </button>
         </form>
       </header>
-
-      <section className="dashboard-stats" aria-label="Job seeker summary">
-        <article className="dashboard-stat">
-          <span>Strong Matches</span>
-          <strong>{canShowPersonalizedMatch ? strongMatchCount : "—"}</strong>
-          <small>
-            {canShowPersonalizedMatch
-              ? "85% match or higher"
-              : "Complete your profile to see matches"}
-          </small>
-        </article>
-        <article className="dashboard-stat">
-          <span>Saved Jobs</span>
-          <strong>{savedJobIds.length}</strong>
-          <small>Ready to revisit</small>
-        </article>
-        <Link className="dashboard-stat" to="/applications">
-          <span>Active Applications</span>
-          <strong>{activeApplicationCount}</strong>
-          <small>
-            {activeApplicationCount
-              ? "Track your submitted applications"
-              : "No active applications yet"}
-          </small>
-        </Link>
-      </section>
 
       <div className="dashboard-content">
         <section className="dashboard-matches" aria-labelledby="matches-heading">

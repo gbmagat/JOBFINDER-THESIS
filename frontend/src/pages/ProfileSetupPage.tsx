@@ -1,5 +1,6 @@
 import {
   FormEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -25,6 +26,10 @@ import {
 import { usePersistentState } from "../lib/usePersistentState";
 import { userStorageKey } from "../lib/storage-keys";
 import { apiRequest } from "../lib/api";
+import {
+  HomeLocationMap,
+  type HomeLocationPoint,
+} from "../features/maps/HomeLocationMap";
 
 type ProfileField =
   | "fullName"
@@ -41,13 +46,24 @@ const profileFieldIds: Record<ProfileField, string> = {
 
 function homeNodeIdForBarangay(barangay: string) {
   const normalized = barangay.trim().toLowerCase();
+  if (!normalized) return "";
   if (normalized.includes("rosario") || normalized.includes("nepo")) {
     return "nepo-center";
   }
   if (normalized.includes("maragul") || normalized.includes("marquee")) {
     return "marquee";
   }
+  if (normalized.includes("business")) return "balibago-business";
   return "balibago";
+}
+
+type LocationState = "idle" | "locating" | "resolving" | "ready" | "error";
+
+interface ResolvedHomeLocation {
+  areaName: string;
+  barangay: string;
+  city: string;
+  homeNodeId: string;
 }
 
 export function ProfileSetupPage() {
@@ -73,8 +89,26 @@ export function ProfileSetupPage() {
   >({});
   const [serverError, setServerError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [homeNodeId, setHomeNodeId] = useState(() =>
+    homeNodeIdForBarangay(profile.barangay),
+  );
+  const [locationState, setLocationState] = useState<LocationState>(() =>
+    profile.barangay.trim() ? "ready" : "idle",
+  );
+  const [locationMessage, setLocationMessage] = useState("");
+  const [pinnedLocation, setPinnedLocation] =
+    useState<HomeLocationPoint | null>(null);
+  const [showLocationMap, setShowLocationMap] = useState(false);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
+  const locationRequestRef = useRef(0);
   const { barangay, city, fullName, mobileNumber } = profile;
+  const locationBusy =
+    locationState === "locating" || locationState === "resolving";
+  const locationReady = Boolean(
+    homeNodeId &&
+      barangay.trim() &&
+      city.trim().toLowerCase() === "angeles city",
+  );
 
   useEffect(() => {
     if (import.meta.env.MODE === "test") return;
@@ -84,9 +118,10 @@ export function ProfileSetupPage() {
       profile: {
         fullName: string;
         mobileNumber: string;
-        barangay: string;
-        city: string;
-      };
+         barangay: string;
+         city: string;
+         homeNodeId: string;
+       };
     }>("/profile")
       .then(({ profile: savedProfile }) => {
         if (!active) return;
@@ -96,6 +131,13 @@ export function ProfileSetupPage() {
           barangay: savedProfile.barangay,
           city: savedProfile.city,
         });
+        const savedHomeNodeId =
+          savedProfile.homeNodeId ||
+          homeNodeIdForBarangay(savedProfile.barangay);
+        setHomeNodeId(savedHomeNodeId);
+        setLocationState(
+          savedHomeNodeId && savedProfile.barangay.trim() ? "ready" : "idle",
+        );
       })
       .catch(() => {});
 
@@ -109,11 +151,117 @@ export function ProfileSetupPage() {
     value: string,
   ) {
     setProfile((current) => ({ ...current, [field]: value }));
+    if (field === "barangay") {
+      setHomeNodeId(homeNodeIdForBarangay(value));
+      setPinnedLocation(null);
+      setLocationMessage("");
+      setLocationState(value.trim() ? "ready" : "idle");
+    } else if (field === "city") {
+      setPinnedLocation(null);
+      setLocationMessage("");
+      setLocationState(
+        value.trim().toLowerCase() === "angeles city" && barangay.trim()
+          ? "ready"
+          : "idle",
+      );
+    }
     setErrors((current) => {
       const next = { ...current };
       delete next[field as ProfileField];
       return next;
     });
+  }
+
+  const resolveHomeLocation = useCallback(
+    async (point: HomeLocationPoint, source: "device" | "map") => {
+      const requestId = ++locationRequestRef.current;
+      setPinnedLocation(point);
+      setLocationState("resolving");
+      setLocationMessage(
+        source === "device"
+          ? "Checking your approximate home area…"
+          : "Checking this pin…",
+      );
+
+      try {
+        const result = await apiRequest<{ location: ResolvedHomeLocation }>(
+          "/profile/location/resolve",
+          {
+            method: "POST",
+            body: JSON.stringify(point),
+          },
+        );
+        if (requestId !== locationRequestRef.current) return;
+
+        setProfile((current) => ({
+          ...current,
+          barangay: result.location.barangay,
+          city: result.location.city,
+        }));
+        setHomeNodeId(result.location.homeNodeId);
+        setLocationState("ready");
+        setLocationMessage(`Pinned near ${result.location.areaName}.`);
+        setShowLocationMap(source === "map");
+        setErrors((current) => {
+          const next = { ...current };
+          delete next.barangay;
+          delete next.city;
+          return next;
+        });
+      } catch (error) {
+        if (requestId !== locationRequestRef.current) return;
+        setLocationState("error");
+        setLocationMessage(
+          error instanceof Error
+            ? error.message
+            : "This location could not be matched. Try another pin.",
+        );
+        setShowLocationMap(true);
+      }
+    },
+    [setProfile],
+  );
+
+  function useDeviceLocation() {
+    setServerError("");
+    if (!("geolocation" in navigator)) {
+      setLocationState("error");
+      setLocationMessage(
+        "Device location is unavailable. Pin your approximate home area instead.",
+      );
+      setShowLocationMap(true);
+      return;
+    }
+
+    setLocationState("locating");
+    setLocationMessage("Waiting for location permission…");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        void resolveHomeLocation(
+          {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          },
+          "device",
+        );
+      },
+      (error) => {
+        setLocationState("error");
+        setShowLocationMap(true);
+        setLocationMessage(
+          error.code === error.PERMISSION_DENIED
+            ? "Location access was not approved. Pin your approximate home area instead."
+            : error.code === error.TIMEOUT
+              ? "Device location timed out. Pin your approximate home area instead."
+              : "Device location is unavailable. Pin your approximate home area instead.",
+        );
+      },
+      {
+        enableHighAccuracy: false,
+        maximumAge: 300_000,
+        timeout: 10_000,
+      },
+    );
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -152,7 +300,7 @@ export function ProfileSetupPage() {
           mobileNumber: normalizedMobile,
           barangay,
           city,
-          homeNodeId: homeNodeIdForBarangay(barangay),
+          homeNodeId: homeNodeId || homeNodeIdForBarangay(barangay),
           preferredWorkTypes: [],
         }),
       });
@@ -364,13 +512,66 @@ export function ProfileSetupPage() {
               </label>
             </div>
 
-            <div className="onboarding-location-summary" role="status">
+            <div className="onboarding-location-actions">
+              <button
+                className="button button--secondary"
+                disabled={locationBusy}
+                onClick={useDeviceLocation}
+                type="button"
+              >
+                <LocateFixed size={17} aria-hidden="true" />
+                {locationState === "locating"
+                  ? "Checking location…"
+                  : "Use current location"}
+              </button>
+              <button
+                aria-controls="home-location-picker"
+                aria-expanded={showLocationMap}
+                className="button button--secondary"
+                disabled={locationBusy}
+                onClick={() => setShowLocationMap((current) => !current)}
+                type="button"
+              >
+                <MapPin size={17} aria-hidden="true" />
+                {showLocationMap ? "Hide map" : "Pin on map"}
+              </button>
+            </div>
+
+            <div
+              aria-live="polite"
+              className={`onboarding-location-summary onboarding-location-summary--${
+                locationReady ? "ready" : "pending"
+              }`}
+              role="status"
+            >
               <LocateFixed size={18} aria-hidden="true" />
               <span>
-                <strong>Location ready</strong>
-                {barangay || "Your barangay"}, {city || "your city"}
+                <strong>
+                  {locationState === "locating"
+                    ? "Checking device location"
+                    : locationState === "resolving"
+                      ? "Checking pinned area"
+                      : locationReady
+                        ? "Location ready"
+                        : "Location not ready"}
+                </strong>
+                {locationMessage ||
+                  (locationReady
+                    ? `${barangay}, ${city}`
+                    : "Enter your barangay or pin an approximate home area.")}
+                <small>Exact coordinates are not saved.</small>
               </span>
             </div>
+
+            {showLocationMap ? (
+              <div id="home-location-picker">
+                <HomeLocationMap
+                  disabled={locationBusy}
+                  onChange={(point) => void resolveHomeLocation(point, "map")}
+                  value={pinnedLocation}
+                />
+              </div>
+            ) : null}
           </section>
 
           <div className="onboarding-actions">

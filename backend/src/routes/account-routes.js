@@ -13,6 +13,15 @@ import {
   validEmail,
 } from "../http.js";
 import { getUserMatch, isMatchingProfileComplete } from "../matching.js";
+import { findNearestGeoNode } from "../routing.js";
+
+const PROFILE_LOCATION_LIMIT_KM = 15;
+const BARANGAY_BY_HOME_NODE = {
+  balibago: "Balibago",
+  "balibago-business": "Balibago",
+  marquee: "Pulung Maragul",
+  "nepo-center": "Sto. Rosario",
+};
 
 function profileResponse(db, userId) {
   const profile = db.prepare("SELECT * FROM profiles WHERE user_id = ?").get(userId);
@@ -80,6 +89,44 @@ export function createAccountRouter(db, uploadsDirectory) {
     response.json({ profile: profileResponse(db, request.user.id) });
   });
 
+  router.post(
+    "/profile/location/resolve",
+    requireRole("job-seeker"),
+    (request, response) => {
+      const latitude = request.body?.latitude;
+      const longitude = request.body?.longitude;
+      const nearest = findNearestGeoNode(db, latitude, longitude);
+
+      if (!nearest) {
+        sendError(
+          response,
+          400,
+          "INVALID_LOCATION",
+          "Choose a valid point on the map.",
+        );
+        return;
+      }
+      if (nearest.distanceKm > PROFILE_LOCATION_LIMIT_KM) {
+        sendError(
+          response,
+          422,
+          "LOCATION_OUTSIDE_SERVICE_AREA",
+          "Choose a location within Angeles City.",
+        );
+        return;
+      }
+
+      response.json({
+        location: {
+          areaName: nearest.name,
+          barangay: BARANGAY_BY_HOME_NODE[nearest.id] || nearest.name,
+          city: "Angeles City",
+          homeNodeId: nearest.id,
+        },
+      });
+    },
+  );
+
   router.put("/profile", requireRole("job-seeker"), (request, response) => {
     const fullName = requiredText(request.body?.fullName, 100);
     const mobileNumber = optionalText(request.body?.mobileNumber, 30);
@@ -92,7 +139,7 @@ export function createAccountRouter(db, uploadsDirectory) {
     if (!fullName) fields.fullName = "Enter your full name.";
     if (!barangay) fields.barangay = "Enter your barangay.";
     if (!db.prepare("SELECT 1 FROM geo_nodes WHERE id = ?").get(homeNodeId)) {
-      fields.homeNodeId = "Choose a supported starting area.";
+      fields.homeNodeId = "Choose a supported home area.";
     }
     if (Object.keys(fields).length) {
       sendError(response, 400, "VALIDATION_ERROR", "Check the highlighted fields.", fields);

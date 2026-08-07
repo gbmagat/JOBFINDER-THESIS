@@ -9,6 +9,8 @@ export interface JobCardProps {
   showMatch?: boolean;
   showSummary?: boolean;
   showDistanceFact?: boolean;
+  isShownOnMap?: boolean;
+  onShowOnMap?: () => void;
 }
 
 export function JobCard({
@@ -16,11 +18,27 @@ export function JobCard({
   showMatch = false,
   showSummary = true,
   showDistanceFact = false,
+  isShownOnMap = false,
+  onShowOnMap,
 }: JobCardProps): ReactElement {
   const detailsHref = `/jobs/${encodeURIComponent(job.id)}`;
 
   return (
     <article className="job-card white-card" aria-labelledby={`job-${job.id}`}>
+      {onShowOnMap ? (
+        <button
+          aria-label={
+            isShownOnMap
+              ? `Deselect ${job.title} and show all jobs on map`
+              : `Select ${job.title} on map`
+          }
+          aria-pressed={isShownOnMap}
+          className="job-card__select-action"
+          onClick={onShowOnMap}
+          type="button"
+        />
+      ) : null}
+
       <div className="job-card__header">
         <div>
           <p className="job-card__source source-label">

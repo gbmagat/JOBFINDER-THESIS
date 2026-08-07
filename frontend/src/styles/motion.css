@@ -149,7 +149,6 @@
     color var(--transition-fast);
 }
 
-.job-card:focus-within,
 .candidate-card:focus-within,
 .public-start-card:focus-visible,
 .application-page .file-field:focus-within,
@@ -248,9 +247,8 @@
   }
 
   .job-card:hover,
-  .job-result-selectable.is-selected .job-card,
   .job-card:focus-within {
-    border-color: var(--palette-green);
+    border-color: var(--color-border-strong);
     background: #fcfbf7;
     box-shadow: var(--shadow-hover);
     transform: translateY(-6px) scale(1.01);
@@ -271,13 +269,6 @@
     border-color: var(--palette-green);
     box-shadow: var(--shadow-hover);
     transform: translateY(-3px);
-  }
-
-  a.dashboard-stat:hover,
-  a.dashboard-stat:focus-visible {
-    border-color: var(--palette-green);
-    box-shadow: var(--shadow-hover);
-    transform: translateY(-5px) scale(1.015);
   }
 
   .skill-result:hover:not(:disabled),

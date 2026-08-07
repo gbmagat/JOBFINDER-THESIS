@@ -2,6 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 
 const jobId = "it-support-assistant-lumina-tech";
 const jobTitle = "IT Support Assistant";
+const angelesDeviceLocation = {
+  latitude: 15.1607,
+  longitude: 120.5887,
+};
 const seeker = {
   email: "qa-seeker@example.test",
   password: "qa-test-password-2026",
@@ -118,12 +122,50 @@ test.describe.serial("JobFinder critical user journeys", () => {
     page.on("pageerror", (error) => pageErrors.push(error.message));
     await useOfflineOpenStreetMapTiles(page);
 
-    const jobsRouteResponsePromise = page.waitForResponse(
-      (response) =>
-        /\/api\/jobs\/[^/]+\/route$/.test(new URL(response.url()).pathname) &&
-        response.request().method() === "GET",
-    );
     await page.goto("/jobs");
+
+    const jobsMap = page.getByTestId("jobs-map");
+    await expect(jobsMap).toBeVisible();
+    await expect(jobsMap).toHaveAttribute("data-marker-count", "3");
+    await expect(jobsMap).toHaveAttribute("data-route-id", "");
+    await expect(
+      page.getByRole("heading", { name: "3 Jobs Shown" }),
+    ).toBeVisible();
+
+    const selectedJobCard = page.locator(".job-card", { hasText: jobTitle });
+    const selectedJobResult = selectedJobCard.locator("..");
+    await selectedJobCard.click({ position: { x: 260, y: 120 } });
+
+    await expect(jobsMap).toHaveAttribute("data-marker-count", "1");
+    await expect(jobsMap).toHaveAttribute("data-route-id", "");
+    await expect(selectedJobResult).toHaveClass(/is-selected/);
+    await expect(selectedJobCard).toHaveCSS(
+      "border-color",
+      "rgb(69, 114, 87)",
+    );
+    await expect(
+      page.getByRole("heading", { name: "1 Selected Job" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Shortest path calculated by JobFinder Dijkstra"),
+    ).toHaveCount(0);
+
+    await page.context().grantPermissions(["geolocation"]);
+    await page.context().setGeolocation(angelesDeviceLocation);
+    const jobsRouteResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === `/api/jobs/${jobId}/route` &&
+        url.searchParams.get("latitude") ===
+          String(angelesDeviceLocation.latitude) &&
+        url.searchParams.get("longitude") ===
+          String(angelesDeviceLocation.longitude) &&
+        response.request().method() === "GET"
+      );
+    });
+    await page
+      .getByRole("button", { name: "Use current location", exact: true })
+      .click();
     const jobsRouteResponse = await jobsRouteResponsePromise;
     expect(jobsRouteResponse.ok()).toBe(true);
     const jobsRoutePayload = (await jobsRouteResponse.json()) as {
@@ -135,13 +177,13 @@ test.describe.serial("JobFinder critical user journeys", () => {
     };
     expectDijkstraGeometry(jobsRoutePayload);
 
-    const jobsMap = page.getByTestId("jobs-map");
-    await expect(jobsMap).toBeVisible();
-    await expect(jobsMap).toHaveAttribute("data-marker-count", "3");
     await expect(jobsMap).toHaveAttribute(
       "data-route-id",
       jobsRoutePayload.route.routeId,
     );
+    await expect(
+      jobsMap.getByText("You are here", { exact: true }),
+    ).toBeVisible();
     await expect(
       jobsMap.getByRole("link", { name: "OpenStreetMap" }),
     ).toHaveAttribute(
@@ -151,13 +193,41 @@ test.describe.serial("JobFinder critical user journeys", () => {
     await expect(
       page.getByText("Shortest path calculated by JobFinder Dijkstra"),
     ).toBeVisible();
-
-    const routeResponsePromise = page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname === `/api/jobs/${jobId}/route` &&
-        response.request().method() === "GET",
+    await selectedJobCard.click({ position: { x: 260, y: 120 } });
+    await expect(jobsMap).toHaveAttribute("data-marker-count", "3");
+    await expect(jobsMap).toHaveAttribute("data-route-id", "");
+    await expect(selectedJobResult).not.toHaveClass(/is-selected/);
+    await expect(selectedJobCard).toHaveCSS(
+      "border-color",
+      "rgb(183, 173, 163)",
     );
+    await expect(
+      page.getByRole("heading", { name: "3 Jobs Shown" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Shortest path calculated by JobFinder Dijkstra"),
+    ).toHaveCount(0);
+
     await page.goto(`/jobs/${jobId}/route`);
+    const routeMap = page.getByTestId("route-map");
+    await expect(routeMap).toBeVisible();
+    await expect(routeMap).toHaveAttribute("data-marker-count", "1");
+    await expect(routeMap).toHaveAttribute("data-route-id", "");
+
+    const routeResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === `/api/jobs/${jobId}/route` &&
+        url.searchParams.get("latitude") ===
+          String(angelesDeviceLocation.latitude) &&
+        url.searchParams.get("longitude") ===
+          String(angelesDeviceLocation.longitude) &&
+        response.request().method() === "GET"
+      );
+    });
+    await page
+      .getByRole("button", { name: "Use My Location", exact: true })
+      .click();
     const routeResponse = await routeResponsePromise;
     expect(routeResponse.ok()).toBe(true);
     const routePayload = (await routeResponse.json()) as {
@@ -169,12 +239,13 @@ test.describe.serial("JobFinder critical user journeys", () => {
     };
     expectDijkstraGeometry(routePayload);
 
-    const routeMap = page.getByTestId("route-map");
-    await expect(routeMap).toBeVisible();
     await expect(routeMap).toHaveAttribute(
       "data-route-id",
       routePayload.route.routeId,
     );
+    await expect(
+      routeMap.getByText("You are here", { exact: true }),
+    ).toBeVisible();
     await expect(routeMap).toContainText(
       `contains ${routePayload.route.geometry.coordinates.length} mapped points`,
     );

@@ -2076,6 +2076,27 @@ ol {
   align-items: center;
 }
 
+.job-card__select-action {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.job-card
+  :is(a, button, input, select, textarea, [role="button"]):not(
+    .job-card__select-action
+  ) {
+  position: relative;
+  z-index: 2;
+}
+
 .match-breakdown,
 .source-provenance {
   padding: var(--space-3);
@@ -2422,6 +2443,13 @@ ol {
   gap: var(--space-1);
 }
 
+.map-panel__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .filter-panel__heading h2,
 .results-heading h2,
 .map-panel__heading h2 {
@@ -2435,6 +2463,7 @@ ol {
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  font-weight: 600;
 }
 
 .text-button {
@@ -2458,7 +2487,11 @@ ol {
 
 .filter-panel .field {
   font-size: var(--text-sm);
-  font-weight: 750;
+  font-weight: 400;
+}
+
+.filter-panel .field > span {
+  font-weight: 600;
 }
 
 .filter-panel select,
@@ -2469,6 +2502,15 @@ ol {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: var(--white);
+}
+
+.filter-panel select {
+  font-weight: 400;
+}
+
+.filter-panel .text-button,
+.filter-panel .advanced-filters > summary {
+  font-weight: 500;
 }
 
 .advanced-filters {
@@ -2516,7 +2558,7 @@ ol {
   margin-bottom: 0.35rem;
   color: var(--slate-800);
   font-size: var(--text-sm);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .check-field {
@@ -2527,6 +2569,7 @@ ol {
   cursor: pointer;
   color: var(--color-text-muted);
   font-size: var(--text-sm);
+  font-weight: 400;
 }
 
 .check-field input {
@@ -3863,6 +3906,7 @@ ol {
 .saved-searches__heading h3 {
   color: var(--navy-900);
   font-size: var(--text-sm);
+  font-weight: 600;
 }
 
 .saved-searches__heading .text-button {
@@ -3895,12 +3939,18 @@ ol {
   background: transparent;
   color: var(--navy-900);
   cursor: pointer;
+  font-weight: 400;
   text-align: left;
+}
+
+.saved-searches__apply strong {
+  font-weight: 500;
 }
 
 .saved-searches__apply small {
   overflow: hidden;
   color: var(--jf-color-text-secondary);
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4506,41 +4556,6 @@ ol {
   outline-offset: -2px;
 }
 
-.dashboard-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.dashboard-stat {
-  display: grid;
-  min-height: 7rem;
-  align-content: center;
-  gap: 0.35rem;
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--white);
-}
-
-.dashboard-stat:hover {
-  border-color: var(--blue-400);
-  background: var(--blue-50);
-}
-
-.dashboard-stat span,
-.dashboard-stat small {
-  color: var(--blue-900);
-  font-size: var(--text-xs);
-}
-
-.dashboard-stat strong {
-  color: var(--blue-700);
-  font-size: 1.65rem;
-  line-height: 1;
-}
-
 .dashboard-content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(17rem, 20rem);
@@ -4616,14 +4631,6 @@ ol {
   .dashboard-search {
     width: 100%;
     flex-basis: auto;
-  }
-
-  .dashboard-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dashboard-stat:last-child {
-    grid-column: 1 / -1;
   }
 
   .dashboard-content {
@@ -4822,6 +4829,40 @@ ol {
 
 .onboarding-location-summary span {
   display: grid;
+}
+
+.onboarding-location-summary small {
+  margin-top: 0.15rem;
+  color: var(--blue-100);
+  font-size: 0.68rem;
+}
+
+.onboarding-location-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jf-space-8);
+}
+
+.onboarding-card--brand .onboarding-location-actions .button {
+  min-height: var(--target-min);
+  border-color: rgb(255 255 255 / 0.55);
+  background: var(--white);
+  color: var(--blue-800);
+}
+
+.onboarding-card--brand .onboarding-location-actions .button:hover:not(:disabled) {
+  border-color: var(--white);
+  background: var(--blue-50);
+}
+
+#home-location-picker {
+  min-width: 0;
+}
+
+@media (max-width: 479px) {
+  .onboarding-location-actions .button {
+    width: 100%;
+  }
 }
 
 .onboarding-actions {
@@ -6182,6 +6223,7 @@ ol {
   background: var(--slate-50);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
+  font-weight: 400;
 }
 
 .candidate-card__reason {
@@ -7699,7 +7741,7 @@ body,
 }
 
 .job-card:hover {
-  border-color: var(--palette-green);
+  border-color: var(--color-border-strong);
   background: #fcfbf7;
   box-shadow: none;
   transform: none;
