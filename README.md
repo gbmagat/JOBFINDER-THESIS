@@ -1,4 +1,4 @@
-# JobFinder - Version 4.4 Sign-In Server Fix
+# JobFinder - Version 4.5 Easy Local Setup
 
 JobFinder is a responsive React, Express, and SQLite thesis prototype for explainable skill and geographic job matching. Guests can browse jobs without match percentages. Personalized scores appear only after a signed-in Job Seeker completes the required profile details and skills.
 
@@ -11,6 +11,8 @@ Version 4.0 reduces accidental-publication risk by ignoring common private thesi
 Version 4.1 adds the restricted PESO/LGU reviewer workspace, employer and job-post verification, subdomain-aware access, an immutable Audit Log, and lifecycle protection that withdraws approved jobs when an employer loses verification.
 
 Version 4.4 replaces raw response-parsing failures with clear server-connection guidance and documents the complete fresh-clone startup procedure.
+
+Version 4.5 makes local setup safe to rerun on Windows without deleting the entire dependency folder first.
 
 ## Mapping prototype
 
@@ -38,6 +40,14 @@ groups and start the frontend and backend together:
 npm run setup
 npm run dev
 ```
+
+Run `npm run setup` once after downloading the project or whenever dependencies
+change. Stop any running JobFinder command with `Ctrl+C` before updating
+dependencies. For normal use after setup, only `npm run dev` is required.
+
+If Windows reports `EPERM` for a native `.node` file, close the running
+JobFinder terminal and rerun `npm run setup`. Do not delete `node_modules` while
+the development server is running.
 
 The terminal should show the backend on `http://127.0.0.1:4000` and the
 frontend Vite address. Do not start only `frontend`, because account actions
