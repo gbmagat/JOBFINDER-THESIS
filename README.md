@@ -1,4 +1,4 @@
-# JobFinder - Version 4.6 Account Role Sign-In Fix
+# JobFinder - Version 4.7 Public Development Demo Accounts
 
 JobFinder is a responsive React, Express, and SQLite thesis prototype for explainable skill and geographic job matching. Guests can browse jobs without match percentages. Personalized scores appear only after a signed-in Job Seeker completes the required profile details and skills.
 
@@ -15,6 +15,8 @@ Version 4.4 replaces raw response-parsing failures with clear server-connection 
 Version 4.5 makes local setup safe to rerun on Windows without deleting the entire dependency folder first.
 
 Version 4.6 lets the shared sign-in page recognize Job Seeker and Employer accounts, sends each account to the correct workspace, and keeps the dedicated PESO/LGU sign-in and Job-Seeker-only application flow protected.
+
+Version 4.7 seeds clearly labeled development-only demo accounts in local and Codespaces development. Production still rejects demo seeding and does not contain built-in demo credentials.
 
 ## Mapping prototype
 
@@ -57,11 +59,17 @@ need the backend API. VS Code Live Server, opening `frontend/dist` directly,
 and GitHub Pages are not supported for sign-in because they do not run the
 Express API.
 
-Private demo-account values are intentionally not stored in GitHub. To use the
-shared Employer and Job Seeker demo accounts, obtain `backend/.env` from the
-project owner through a private channel. Alternatively, copy
-`backend/.env.example` to the ignored `backend/.env`, provide your own demo
-emails and password, and keep `JOBFINDER_SEED_DEMO=true` while running locally.
+Development started through `npm run dev` automatically seeds these thesis demo
+accounts:
+
+- Employer: `employer@demo.com`
+- Job Seeker: `jobfinder@demo.com`
+- Password for both accounts: `12345678`
+
+These are public development fixtures, not production credentials. The
+PESO/LGU reviewer remains privately configured. A local, ignored
+`backend/.env` can override all demo values. Production requires
+`JOBFINDER_SEED_DEMO=false` and never falls back to the public accounts.
 
 If the interface opens but sign-in cannot reach the server, confirm that
 `http://127.0.0.1:4000/api/health` returns JSON, then stop the running commands

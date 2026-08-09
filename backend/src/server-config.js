@@ -2,6 +2,28 @@ function enabled(value) {
   return /^(1|true|yes)$/i.test(String(value ?? ""));
 }
 
+const DEVELOPMENT_DEMO_ACCOUNTS = {
+  employerEmail: "employer@demo.com",
+  jobSeekerEmail: "jobfinder@demo.com",
+  password: "12345678",
+};
+
+export function getDemoAccountConfig(config, environment = process.env) {
+  if (!config.seedDemo || config.production) return null;
+
+  return {
+    employerEmail:
+      environment.JOBFINDER_DEMO_EMPLOYER_EMAIL ||
+      DEVELOPMENT_DEMO_ACCOUNTS.employerEmail,
+    jobSeekerEmail:
+      environment.JOBFINDER_DEMO_JOB_SEEKER_EMAIL ||
+      DEVELOPMENT_DEMO_ACCOUNTS.jobSeekerEmail,
+    pesoLguEmail: environment.JOBFINDER_DEMO_PESO_LGU_EMAIL || undefined,
+    password:
+      environment.JOBFINDER_DEMO_PASSWORD || DEVELOPMENT_DEMO_ACCOUNTS.password,
+  };
+}
+
 export function getServerConfig(environment = process.env) {
   const production = environment.NODE_ENV === "production";
   const seedDemo = enabled(environment.JOBFINDER_SEED_DEMO);

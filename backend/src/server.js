@@ -4,7 +4,7 @@ import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app.js";
 import { createDatabase } from "./db.js";
-import { getServerConfig } from "./server-config.js";
+import { getDemoAccountConfig, getServerConfig } from "./server-config.js";
 import { getStorageConfig } from "./storage-config.js";
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -18,12 +18,7 @@ const frontendIndex = path.join(frontendDirectory, "index.html");
 if (config.production && !existsSync(frontendIndex)) {
   throw new Error("Production startup requires a built frontend. Run npm run build first.");
 }
-const demoAccounts = {
-  employerEmail: process.env.JOBFINDER_DEMO_EMPLOYER_EMAIL,
-  jobSeekerEmail: process.env.JOBFINDER_DEMO_JOB_SEEKER_EMAIL,
-  pesoLguEmail: process.env.JOBFINDER_DEMO_PESO_LGU_EMAIL,
-  password: process.env.JOBFINDER_DEMO_PASSWORD,
-};
+const demoAccounts = getDemoAccountConfig(config);
 const db = createDatabase(storage.databasePath, {
   seedDemo: config.seedDemo,
   demoAccounts,
