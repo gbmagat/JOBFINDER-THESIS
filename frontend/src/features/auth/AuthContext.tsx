@@ -32,7 +32,10 @@ export interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isReady: boolean;
-  signIn(input: SignInInput): Promise<AuthUser>;
+  signIn(
+    input: SignInInput,
+    allowedRoles?: readonly AuthRole[],
+  ): Promise<AuthUser>;
   register(input: Required<SignInInput>): Promise<AuthUser>;
   signOut(): Promise<void>;
 }
@@ -201,7 +204,7 @@ export function AuthProvider({ children, storage }: AuthProviderProps) {
   }, [activeStorage, storage]);
 
   const signIn = useCallback(
-    async (input: SignInInput) => {
+    async (input: SignInInput, allowedRoles?: readonly AuthRole[]) => {
       const nextUser = usesMockAuth
         ? createMockUser(input)
         : (
@@ -214,7 +217,11 @@ export function AuthProvider({ children, storage }: AuthProviderProps) {
             })
           ).user;
 
-      if (input.role && nextUser.role !== input.role) {
+      const roleIsAllowed = input.role
+        ? nextUser.role === input.role
+        : !allowedRoles || allowedRoles.includes(nextUser.role);
+
+      if (!roleIsAllowed) {
         if (!usesMockAuth) {
           try {
             await apiRequest<null>("/auth/logout", { method: "POST" });
@@ -230,7 +237,10 @@ export function AuthProvider({ children, storage }: AuthProviderProps) {
             : nextUser.role === "peso-lgu"
               ? "PESO / LGU Reviewer"
               : "Job Seeker";
-        throw new Error(`This email belongs to a ${accountLabel} account.`);
+        const article = nextUser.role === "employer" ? "an" : "a";
+        throw new Error(
+          `This email belongs to ${article} ${accountLabel} account.`,
+        );
       }
 
       if (activeStorage) {

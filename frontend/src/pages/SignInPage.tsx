@@ -18,21 +18,33 @@ import {
 import { useJobs } from "../features/jobs/JobsContext";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 
+const PUBLIC_SIGN_IN_ROLES = ["job-seeker", "employer"] as const;
+
 export function SignInPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { isAuthenticated, signIn } = useAuth();
+  const { isAuthenticated, signIn, user } = useAuth();
   const { getJob } = useJobs();
-  const requestedRole: AuthRole =
-    searchParams.get("role") === "employer" ? "employer" : "job-seeker";
+  const savedApplyIntent = useMemo(() => readApplyIntent(), []);
+  const savedApplyJob = savedApplyIntent
+    ? getJob(savedApplyIntent.jobId)
+    : null;
+  const roleParam = searchParams.get("role");
+  const pendingIntent =
+    roleParam !== "employer" && savedApplyJob ? savedApplyIntent : null;
+  const requestedRole: AuthRole | undefined =
+    roleParam === "employer"
+      ? "employer"
+      : roleParam === "job-seeker" || pendingIntent
+        ? "job-seeker"
+        : undefined;
   const rawReturnTo = searchParams.get("returnTo");
   const sessionExpired = searchParams.get("reason") === "session-expired";
+  const jobSeekerReturnTo = sanitizeReturnTo(rawReturnTo);
+  const employerReturnTo = sanitizeEmployerReturnTo(rawReturnTo);
   const returnTo =
-    requestedRole === "employer"
-      ? sanitizeEmployerReturnTo(rawReturnTo)
-      : sanitizeReturnTo(rawReturnTo);
-  const pendingIntent = useMemo(() => readApplyIntent(), []);
-  const selectedJob = pendingIntent ? getJob(pendingIntent.jobId) : null;
+    requestedRole === "employer" ? employerReturnTo : jobSeekerReturnTo;
+  const selectedJob = pendingIntent ? savedApplyJob : null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -51,8 +63,20 @@ export function SignInPage() {
     } | JobFinder`;
   }, [selectedJob]);
 
-  if (isAuthenticated) {
-    return <Navigate replace to={returnTo} />;
+  useEffect(() => {
+    if (savedApplyIntent && !savedApplyJob) {
+      clearApplyIntent();
+    }
+  }, [savedApplyIntent, savedApplyJob]);
+
+  if (isAuthenticated && user) {
+    const authenticatedReturnTo =
+      user.role === "employer"
+        ? employerReturnTo
+        : user.role === "peso-lgu"
+          ? "/lgu"
+          : jobSeekerReturnTo;
+    return <Navigate replace to={authenticatedReturnTo} />;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -81,13 +105,29 @@ export function SignInPage() {
     setSubmitting(true);
     setError("");
     try {
-      await signIn({ email, password, role: requestedRole });
+      const credentials = {
+        email,
+        password,
+        role: requestedRole,
+      };
+      const signedInUser = requestedRole
+        ? await signIn(credentials)
+        : await signIn(credentials, PUBLIC_SIGN_IN_ROLES);
       const intent = readApplyIntent();
-      if (intent) {
+      if (intent && signedInUser.role === "job-seeker") {
         clearApplyIntent();
         navigate(getApplyResumePath(intent), { replace: true });
       } else {
-        navigate(returnTo, { replace: true });
+        if (intent) {
+          clearApplyIntent();
+        }
+        const accountReturnTo =
+          signedInUser.role === "employer"
+            ? employerReturnTo
+            : signedInUser.role === "peso-lgu"
+              ? "/lgu"
+              : jobSeekerReturnTo;
+        navigate(accountReturnTo, { replace: true });
       }
     } catch (caught) {
       setError(

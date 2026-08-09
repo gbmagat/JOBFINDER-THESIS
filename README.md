@@ -1,4 +1,4 @@
-# JobFinder - Version 4.5 Easy Local Setup
+# JobFinder - Version 4.6 Account Role Sign-In Fix
 
 JobFinder is a responsive React, Express, and SQLite thesis prototype for explainable skill and geographic job matching. Guests can browse jobs without match percentages. Personalized scores appear only after a signed-in Job Seeker completes the required profile details and skills.
 
@@ -13,6 +13,8 @@ Version 4.1 adds the restricted PESO/LGU reviewer workspace, employer and job-po
 Version 4.4 replaces raw response-parsing failures with clear server-connection guidance and documents the complete fresh-clone startup procedure.
 
 Version 4.5 makes local setup safe to rerun on Windows without deleting the entire dependency folder first.
+
+Version 4.6 lets the shared sign-in page recognize Job Seeker and Employer accounts, sends each account to the correct workspace, and keeps the dedicated PESO/LGU sign-in and Job-Seeker-only application flow protected.
 
 ## Mapping prototype
 
