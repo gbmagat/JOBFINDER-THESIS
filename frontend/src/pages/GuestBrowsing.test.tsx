@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "../features/auth/AuthContext";
 import { JobDetailPage } from "./JobDetailPage";
@@ -18,10 +18,15 @@ const originalGeolocation = Object.getOwnPropertyDescriptor(
   "geolocation",
 );
 
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-08-01T12:00:00+08:00"));
+});
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   if (originalGeolocation) {
     Object.defineProperty(
       window.navigator,

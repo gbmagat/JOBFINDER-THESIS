@@ -1,4 +1,4 @@
-# JobFinder - Version 4.1 PESO/LGU Verification Workspace
+# JobFinder - Version 4.4 Sign-In Server Fix
 
 JobFinder is a responsive React, Express, and SQLite thesis prototype for explainable skill and geographic job matching. Guests can browse jobs without match percentages. Personalized scores appear only after a signed-in Job Seeker completes the required profile details and skills.
 
@@ -9,6 +9,8 @@ Version 3.9 prevents local environment files, databases, uploads, and backups fr
 Version 4.0 reduces accidental-publication risk by ignoring common private thesis files and sensitive runtime artifacts, then checking that sensitive paths are not already tracked by Git.
 
 Version 4.1 adds the restricted PESO/LGU reviewer workspace, employer and job-post verification, subdomain-aware access, an immutable Audit Log, and lifecycle protection that withdraws approved jobs when an employer loses verification.
+
+Version 4.4 replaces raw response-parsing failures with clear server-connection guidance and documents the complete fresh-clone startup procedure.
 
 ## Mapping prototype
 
@@ -29,14 +31,29 @@ Do not bulk-download or offline-cache public OpenStreetMap tiles.
 
 ## Run locally
 
+Use Node.js 22 or newer. From the repository root, install all three package
+groups and start the frontend and backend together:
+
 ```powershell
-npm ci
-npm ci --prefix frontend
-npm ci --prefix backend
+npm run setup
 npm run dev
 ```
 
-Copy `backend/.env.example` to the ignored `backend/.env` only when private local demo accounts are needed.
+The terminal should show the backend on `http://127.0.0.1:4000` and the
+frontend Vite address. Do not start only `frontend`, because account actions
+need the backend API. VS Code Live Server, opening `frontend/dist` directly,
+and GitHub Pages are not supported for sign-in because they do not run the
+Express API.
+
+Private demo-account values are intentionally not stored in GitHub. To use the
+shared Employer and Job Seeker demo accounts, obtain `backend/.env` from the
+project owner through a private channel. Alternatively, copy
+`backend/.env.example` to the ignored `backend/.env`, provide your own demo
+emails and password, and keep `JOBFINDER_SEED_DEMO=true` while running locally.
+
+If the interface opens but sign-in cannot reach the server, confirm that
+`http://127.0.0.1:4000/api/health` returns JSON, then stop the running commands
+and start the project again from the repository root with `npm run dev`.
 
 ## Verify the release
 

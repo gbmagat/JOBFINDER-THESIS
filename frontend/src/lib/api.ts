@@ -6,6 +6,18 @@ interface ApiErrorBody {
   };
 }
 
+const SERVER_UNAVAILABLE_BODY: ApiErrorBody = {
+  error: {
+    code: "SERVER_UNAVAILABLE",
+    message:
+      "JobFinder server unavailable. Run npm run dev from the main project folder, then try again.",
+  },
+};
+
+function isApiErrorBody(value: unknown): value is ApiErrorBody {
+  return typeof value === "object" && value !== null;
+}
+
 export class ApiError extends Error {
   code: string;
   status: number;
@@ -25,20 +37,47 @@ export async function apiRequest<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const isFormData = options.body instanceof FormData;
-  const response = await fetch(`/api${pathname}`, {
-    ...options,
-    credentials: "include",
-    headers: {
-      ...(!isFormData && options.body
-        ? { "content-type": "application/json" }
-        : {}),
-      ...options.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api${pathname}`, {
+      ...options,
+      credentials: "include",
+      headers: {
+        ...(!isFormData && options.body
+          ? { "content-type": "application/json" }
+          : {}),
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new ApiError(0, SERVER_UNAVAILABLE_BODY);
+  }
 
-  const body = response.status === 204 ? null : await response.json();
+  let body: unknown = null;
+  if (response.status !== 204) {
+    let responseText: string;
+    try {
+      responseText = await response.text();
+    } catch {
+      throw new ApiError(response.status, SERVER_UNAVAILABLE_BODY);
+    }
+
+    if (!responseText.trim()) {
+      throw new ApiError(response.status, SERVER_UNAVAILABLE_BODY);
+    }
+
+    try {
+      body = JSON.parse(responseText);
+    } catch {
+      throw new ApiError(response.status, SERVER_UNAVAILABLE_BODY);
+    }
+  }
+
   if (!response.ok) {
-    throw new ApiError(response.status, body || {});
+    throw new ApiError(
+      response.status,
+      isApiErrorBody(body) ? body : SERVER_UNAVAILABLE_BODY,
+    );
   }
   return body as T;
 }

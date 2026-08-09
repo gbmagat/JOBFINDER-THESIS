@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, test } from "node:test";
+import { afterEach, beforeEach, mock, test } from "node:test";
 import { createApp } from "../src/app.js";
 import { createDatabase } from "../src/db.js";
 
@@ -18,6 +18,10 @@ const demoAccounts = {
 };
 
 beforeEach(async () => {
+  mock.timers.enable({
+    apis: ["Date"],
+    now: new Date("2026-08-01T12:00:00+08:00"),
+  });
   db = createDatabase(":memory:", { seedDemo: true, demoAccounts });
   temporaryDirectory = mkdtempSync(path.join(tmpdir(), "jobfinder-api-"));
   const app = createApp({
@@ -34,6 +38,7 @@ afterEach(async () => {
   await new Promise((resolve) => server.close(resolve));
   db.close();
   rmSync(temporaryDirectory, { recursive: true, force: true });
+  mock.timers.reset();
 });
 
 async function request(pathname, options = {}) {
