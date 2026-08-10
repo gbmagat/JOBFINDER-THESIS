@@ -8,6 +8,7 @@ import {
   History,
   Home,
   LogOut,
+  MapPin,
   Search,
   UserRound,
   UsersRound,
@@ -233,9 +234,11 @@ function getPageTitle(pathname: string) {
 function Brand({
   compact = false,
   context,
+  showGuestMark = false,
 }: {
   compact?: boolean;
   context?: string;
+  showGuestMark?: boolean;
 }) {
   if (compact) {
     return (
@@ -249,9 +252,16 @@ function Brand({
 
   return (
     <Link className="brand" to="/" aria-label="JobFinder home">
-      <span className="brand-mark" aria-hidden="true">
-        JF
-      </span>
+      {showGuestMark ? (
+        <span className="brand-logo-mark" aria-hidden="true">
+          <MapPin className="brand-logo-mark__pin" />
+          <BriefcaseBusiness className="brand-logo-mark__case" />
+        </span>
+      ) : (
+        <span className="brand-mark" aria-hidden="true">
+          JF
+        </span>
+      )}
       <span className="brand-copy">
         <span className="brand-name">JobFinder</span>
         {context ? <span className="brand-context">{context}</span> : null}
@@ -278,14 +288,14 @@ function DesktopTopNavigation({
       ? "Employer Workspace"
       : user?.role === "peso-lgu"
         ? "PESO / LGU Workspace"
-      : isGuest
-        ? undefined
-        : "Job Seeker Workspace";
+        : undefined;
 
   return (
-    <header className="desktop-top-nav">
+    <header
+      className={`desktop-top-nav${isGuest ? " desktop-top-nav--guest" : ""}`}
+    >
       <div className="desktop-top-nav__inner">
-        <Brand context={context} />
+        <Brand context={context} showGuestMark={isGuest} />
 
         <nav className="top-nav-links" aria-label="Primary navigation">
           {items.map((item) => {
@@ -326,13 +336,11 @@ function DesktopTopNavigation({
             <>
               <span className="desktop-account__user">
                 <span>{user?.displayName}</span>
-                <small>
-                  {user?.role === "employer"
-                    ? "Employer Team"
-                    : user?.role === "peso-lgu"
-                      ? "LGU Reviewer"
-                    : "Job Seeker Account"}
-                </small>
+                {user?.role === "employer" ? (
+                  <small>Employer Team</small>
+                ) : user?.role === "peso-lgu" ? (
+                  <small>LGU Reviewer</small>
+                ) : null}
               </span>
               <button
                 aria-label="Sign out"
@@ -463,14 +471,14 @@ function MobileChrome({
       ? "Employer Workspace"
       : user?.role === "peso-lgu"
         ? "PESO / LGU Workspace"
-      : isGuest
-        ? undefined
-        : "Job Seeker Workspace";
+        : undefined;
 
   return (
     <>
-      <header className="mobile-header">
-        <Brand context={context} />
+      <header
+        className={`mobile-header${isGuest ? " mobile-header--guest" : ""}`}
+      >
+        <Brand context={context} showGuestMark={isGuest} />
         <div className="mobile-account-actions">
           <Link
             className="mobile-auth-link"
@@ -556,6 +564,8 @@ export function PublicLayout() {
     pathname === "/register" ||
     pathname.startsWith("/onboarding/") ||
     pathname.endsWith("/apply");
+  const usesSeekerPalette =
+    !isFocusedFlow && (isGuest || user?.role === "job-seeker");
   useEffect(() => {
     document.title = `${getPageTitle(pathname)} | JobFinder`;
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -583,7 +593,7 @@ export function PublicLayout() {
 
   return (
     <div
-      className={`app-shell${isFocusedFlow ? " app-shell--focused" : ""}`}
+      className={`app-shell${isFocusedFlow ? " app-shell--focused" : ""}${usesSeekerPalette ? " app-shell--seeker-palette" : ""}`}
     >
       <a className="skip-link" href="#main-content">
         Skip to main content

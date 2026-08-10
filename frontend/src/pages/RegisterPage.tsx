@@ -104,9 +104,13 @@ export function RegisterPage() {
     returnTo,
     ...(requestedRole === "employer" ? { role: "employer" } : {}),
   });
+  const registerDescription =
+    requestedRole === "employer"
+      ? "Create an account to post jobs and manage applications."
+      : "Create an account to apply, save jobs, and keep your match preferences.";
 
   return (
-    <main className="auth-page">
+    <main className="auth-page auth-page--account auth-page--register">
       <section className="auth-page__panel">
         <Link className="back-link" to="/">
           <ArrowLeft size={18} aria-hidden="true" /> Continue Browsing
@@ -114,27 +118,8 @@ export function RegisterPage() {
         <div className="auth-shell auth-shell--register">
           <header className="auth-header">
             <h1>Create Your Account</h1>
-            <p>
-              Browse without an account. Register only to apply, save jobs, or
-              keep your match preferences.
-            </p>
+            <p>{registerDescription}</p>
           </header>
-          <nav className="auth-mode-switch" aria-label="Account access">
-            <Link
-              className="auth-mode-switch__option"
-              to={`/sign-in?${signInSearch.toString()}`}
-              viewTransition
-            >
-              Sign In
-            </Link>
-            <span className="auth-mode-switch__divider" aria-hidden="true" />
-            <span
-              aria-current="page"
-              className="auth-mode-switch__option is-active"
-            >
-              Register
-            </span>
-          </nav>
           <div className="auth-card">
           {!isOnline ? (
             <div className="notice notice--warning" role="status">
@@ -290,7 +275,7 @@ export function RegisterPage() {
           </form>
           </div>
           <p className="auth-switch">
-            Already have an account?{" "}
+            Already registered?{" "}
             <Link
               to={`/sign-in?${signInSearch.toString()}`}
               viewTransition

@@ -284,12 +284,8 @@ export function EmployerPage() {
     <div className="page employer-page">
       <header className="page-header page-header--split">
         <div className="page-header__copy">
-          <span className="eyebrow">Employer Workspace</span>
-          <h1>Good Morning, {workspaceName}</h1>
-          <p>
-            Manage your job posts and review applicants using clear skill and
-            travel evidence.
-          </p>
+          <span className="eyebrow">{workspaceName}</span>
+          <h1>Employer Dashboard</h1>
         </div>
         <Link className="button button--primary" to="/employer/posts/new">
           Create Job Post

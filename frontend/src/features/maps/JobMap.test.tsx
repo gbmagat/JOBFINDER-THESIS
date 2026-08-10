@@ -118,6 +118,36 @@ describe("JobMap", () => {
     ).toBeInTheDocument();
   });
 
+  it("uses the saved-home label for an approximate profile location", () => {
+    render(
+      <JobMap
+        currentLocation={{ latitude: 15.1667, longitude: 120.5874 }}
+        jobs={[
+          {
+            id: "job-two",
+            latitude: 15.1458,
+            longitude: 120.5882,
+            title: "Second Job",
+          },
+        ]}
+        label="Map with saved home area"
+        locationLabel="Saved home area"
+        route={route}
+        selectedJobId="job-two"
+        testId="saved-home-map"
+      />,
+    );
+
+    const markerKey = screen.getByRole("list", { name: "Map marker key" });
+    expect(within(markerKey).getByText("Saved home area")).toBeInTheDocument();
+    expect(within(markerKey).queryByText("You are here")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "1 job marker shown. Saved home area and the selected job are shown. Route route-test-dijkstra runs from saved home area to the selected job and contains 2 mapped points.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("announces when no route line is available", () => {
     render(
       <JobMap

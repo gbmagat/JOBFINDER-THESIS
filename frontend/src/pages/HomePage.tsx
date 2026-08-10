@@ -1,19 +1,24 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  BriefcaseBusiness,
+  Clock3,
   Compass,
+  MapPin,
   Search,
-  ShieldCheck,
+  TrendingUp,
 } from "lucide-react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import { useJobs } from "../features/jobs/JobsContext";
 import { JobCard } from "../features/jobs/JobCard";
+import type { JobListing } from "../features/jobs/types";
 import {
   DEFAULT_PROFILE_DETAILS,
   DEFAULT_PROFILE_SKILLS,
   PROFILE_DETAILS_KEY,
   PROFILE_SKILLS_KEY,
+  WORK_TYPES_KEY,
 } from "../features/profile/storage";
 import { userStorageKey } from "../lib/storage-keys";
 import { usePersistentState } from "../lib/usePersistentState";
@@ -28,8 +33,6 @@ type HomeApiProfile = {
   preferredWorkTypes: string[];
   skills: { name: string }[];
 };
-
-const DEFAULT_HOME_WORK_TYPES = ["Full-time", "Hybrid"];
 
 function hasRequiredProfileDetails(profile: typeof DEFAULT_PROFILE_DETAILS) {
   const mobileNumber = profile.mobileNumber.replace(/[\s()-]/g, "");
@@ -49,7 +52,9 @@ export function HomePage() {
   }
 
   if (user?.role === "job-seeker") {
-    return <JobSeekerHome displayName={user.displayName} userId={user.id} />;
+    return (
+      <JobSeekerHome displayName={user.displayName} userId={user.id} />
+    );
   }
 
   return <PublicHome />;
@@ -73,8 +78,11 @@ function JobSeekerHome({
     userStorageKey(PROFILE_SKILLS_KEY, userId),
     DEFAULT_PROFILE_SKILLS,
   );
-  const [preferredWorkTypes, setPreferredWorkTypes] = useState<string[] | null>(
-    import.meta.env.MODE === "test" ? DEFAULT_HOME_WORK_TYPES : null,
+  const [preferredWorkTypes, setPreferredWorkTypes] = usePersistentState<
+    string[]
+  >(
+    userStorageKey(WORK_TYPES_KEY, userId),
+    [],
   );
   const [serverProfileComplete, setServerProfileComplete] = useState<
     boolean | null
@@ -99,7 +107,6 @@ function JobSeekerHome({
       })
       .catch(() => {
         if (active) {
-          setPreferredWorkTypes(DEFAULT_HOME_WORK_TYPES);
           setServerProfileComplete(false);
         }
       });
@@ -110,6 +117,7 @@ function JobSeekerHome({
   }, [
     setProfileDetails,
     setProfileSkills,
+    setPreferredWorkTypes,
     userId,
   ]);
   const hasProfileDetails = hasRequiredProfileDetails(profileDetails);
@@ -118,12 +126,21 @@ function JobSeekerHome({
     (import.meta.env.MODE === "test"
       ? hasProfileDetails && profileSkills.length > 0
       : serverProfileComplete === true);
+  const profileName = profileDetails.fullName.trim() || displayName.trim();
+  const firstName = profileName.split(/\s+/, 1)[0] || "you";
+  const homeJobs = useMemo(() => {
+    const jobs = canShowPersonalizedMatch
+      ? [...allJobs].sort(
+          (first, second) =>
+            second.fit.overallScore - first.fit.overallScore,
+        )
+      : allJobs;
+    return jobs.slice(0, 2);
+  }, [allJobs, canShowPersonalizedMatch]);
   const profileSetupHref =
     hasProfileDetails && profileSkills.length === 0
       ? "/onboarding/skills"
       : "/onboarding/profile";
-  const firstName = displayName.trim().split(/\s+/, 1)[0] || "there";
-
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = query.trim();
@@ -138,14 +155,9 @@ function JobSeekerHome({
             <Compass size={16} aria-hidden="true" />
             {canShowPersonalizedMatch
               ? `${profileDetails.barangay}, ${profileDetails.city}`
-              : "Complete Your Profile to Unlock Matches"}
+              : "Profile incomplete"}
           </span>
-          <h1>Good Morning, {firstName}</h1>
-          <p>
-            {canShowPersonalizedMatch
-              ? "Find work that fits your skills and location."
-              : "Browse local jobs now, then complete your profile for personalized matches."}
-          </p>
+          <h1>Jobs for {firstName}</h1>
         </div>
 
         <form
@@ -155,12 +167,12 @@ function JobSeekerHome({
         >
           <Search size={20} aria-hidden="true" />
           <label className="sr-only" htmlFor="dashboard-job-search">
-            Search jobs, skills, or employers
+            Search by job title, skill, or company
           </label>
           <input
             id="dashboard-job-search"
             type="search"
-            placeholder="Search jobs, skills, or employers"
+            placeholder="Job title, skill, or company"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -174,23 +186,24 @@ function JobSeekerHome({
         <section className="dashboard-matches" aria-labelledby="matches-heading">
           <div className="section-heading">
             <div>
-              <p className="kicker">Skill-aware and location-aware</p>
               <h2 id="matches-heading">
-                {canShowPersonalizedMatch ? "Best Matches" : "Explore Local Jobs"}
+                {canShowPersonalizedMatch ? "Top matches" : "Local jobs"}
               </h2>
             </div>
             <Link className="text-link" to="/jobs">
-              {canShowPersonalizedMatch ? "See All Matches" : "Browse All Jobs"}{" "}
+              View all jobs{" "}
               <ArrowRight size={16} aria-hidden="true" />
             </Link>
           </div>
-          <div className="job-list">
-            {allJobs.slice(0, 2).map((job, index) => (
+          <div className="job-list home-job-grid">
+            {homeJobs.map((job) => (
               <JobCard
                 job={job}
                 key={job.id}
                 showMatch={canShowPersonalizedMatch}
-                showSummary={index === 0}
+                showMatchEvidence={canShowPersonalizedMatch}
+                showSource={false}
+                showSummary
               />
             ))}
           </div>
@@ -202,44 +215,45 @@ function JobSeekerHome({
         >
           {canShowPersonalizedMatch ? (
             <>
-              <p className="kicker">Personalized ranking</p>
-              <h2 id="preferences-heading">Your Matching Preferences</h2>
+              <h2 id="preferences-heading">Your profile</h2>
               <dl>
                 <div>
-                  <dt>Preferred work types</dt>
+                  <dt>Location</dt>
                   <dd>
-                    {preferredWorkTypes === null
-                      ? "Loading preferences..."
-                      : preferredWorkTypes.length > 0
-                        ? preferredWorkTypes.map((workType) => (
-                            <span className="chip" key={workType}>
-                              {workType}
-                            </span>
-                          ))
-                        : "No preference selected"}
+                    {profileDetails.barangay}, {profileDetails.city}
                   </dd>
                 </div>
                 <div>
-                  <dt>Top skills</dt>
+                  <dt>Work types</dt>
+                  <dd>
+                    {preferredWorkTypes.length > 0
+                      ? preferredWorkTypes.map((workType) => (
+                          <span className="chip" key={workType}>
+                            {workType}
+                          </span>
+                        ))
+                      : "No preference selected"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Skills</dt>
                   <dd>{profileSkills.join(" · ")}</dd>
                 </div>
               </dl>
               <Link className="button button--secondary" to="/preferences">
-                Edit Preferences
+                Edit preferences
               </Link>
             </>
           ) : (
             <>
-              <p className="kicker">Profile setup</p>
-              <h2 id="preferences-heading">Unlock Personalized Matches</h2>
+              <h2 id="preferences-heading">Complete your profile</h2>
               <p className="preferences-card__message">
-                Add your contact details, home area, and skills
-                before JobFinder calculates match percentages.
+                Add your location and skills to see match scores.
               </p>
               <Link className="button button--primary" to={profileSetupHref}>
                 {profileSkills.length > 0
-                  ? "Complete Your Profile"
-                  : "Set Up Your Profile"}
+                  ? "Complete your profile"
+                  : "Set up your profile"}
               </Link>
             </>
           )}
@@ -249,9 +263,83 @@ function JobSeekerHome({
   );
 }
 
+const publicSalaryFormatter = new Intl.NumberFormat("en-PH", {
+  maximumFractionDigits: 0,
+});
+
+const publicJobCategories = [
+  {
+    label: "IT & Software",
+    query: "IT software",
+    terms: ["developer", "software", "web", "it support", "computer"],
+  },
+  {
+    label: "Sales & Marketing",
+    query: "sales marketing",
+    terms: ["sales", "marketing"],
+  },
+  {
+    label: "Customer Service",
+    query: "customer service",
+    terms: ["customer service", "customer support"],
+  },
+  {
+    label: "Healthcare",
+    query: "healthcare",
+    terms: ["healthcare", "medical", "nurse"],
+  },
+  {
+    label: "Accounting",
+    query: "accounting",
+    terms: ["accounting", "bookkeeping", "finance"],
+  },
+] as const;
+
+function formatPublicSalary(job: JobListing) {
+  return `\u20B1${publicSalaryFormatter.format(job.salary.minimumPhp)} - \u20B1${publicSalaryFormatter.format(job.salary.maximumPhp)}`;
+}
+
+function formatPublicPostedAge(postedAt: string) {
+  const postedTime = new Date(postedAt).getTime();
+  if (!Number.isFinite(postedTime)) return "Recently posted";
+
+  const days = Math.max(
+    0,
+    Math.floor((Date.now() - postedTime) / (24 * 60 * 60 * 1000)),
+  );
+  if (days === 0) return "Today";
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+function matchesPublicCategory(job: JobListing, terms: readonly string[]) {
+  const searchableText = [
+    job.title,
+    job.summary,
+    ...job.tags,
+    ...job.requirements.requiredSkills,
+    ...job.requirements.preferredSkills,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return terms.some((term) => searchableText.includes(term));
+}
+
 function PublicHome() {
   const navigate = useNavigate();
+  const { isLoading, jobs: allJobs } = useJobs();
   const [query, setQuery] = useState("");
+  const featuredJobs = allJobs.slice(0, 4);
+  const categoryCounts = useMemo(
+    () =>
+      publicJobCategories.map((category) => ({
+        ...category,
+        count: allJobs.filter((job) =>
+          matchesPublicCategory(job, category.terms),
+        ).length,
+      })),
+    [allJobs],
+  );
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -264,79 +352,183 @@ function PublicHome() {
       <section className="public-home-hero" aria-labelledby="home-heading">
         <div className="public-home-hero__inner">
           <div className="public-home-hero__copy">
-            <p className="public-home-eyebrow">
-              Angeles City Job Opportunities
-            </p>
-            <h1 id="home-heading">Welcome to JobFinder</h1>
+            <h1 id="home-heading">Find your next opportunity.</h1>
             <p className="public-home-hero__lede">
-              Browse local jobs or open the Employer Workspace.
+              Connect with local employers and discover roles that match your
+              skills, experience, and career goals.
             </p>
 
-            <label
-              className="public-home-search-label"
-              htmlFor="home-job-search"
-            >
-              Quick Job Search
-            </label>
             <form
               className="public-home-search"
               role="search"
               onSubmit={handleSearch}
             >
               <Search size={20} aria-hidden="true" />
+              <label className="sr-only" htmlFor="home-job-search">
+                Search by job title, skill, or company
+              </label>
               <input
                 id="home-job-search"
                 type="search"
-                placeholder="Enter a job title, skill, or employer"
+                placeholder="Job title, skills, or company"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
               <button className="button button--primary" type="submit">
-                Search Jobs
+                Search
               </button>
             </form>
+
+            <nav className="public-home-popular" aria-label="Popular searches">
+              <span>Popular:</span>
+              <Link to="/jobs?q=Software%20Engineer">Software Engineer</Link>
+              <Link to="/jobs?q=Product%20Manager">Product Manager</Link>
+              <Link to="/jobs?q=Data%20Analyst">Data Analyst</Link>
+            </nav>
           </div>
         </div>
       </section>
 
-      <section className="public-data-strip" aria-label="Job data source">
-        <div className="public-data-strip__inner">
-          <p>
-            <ShieldCheck size={19} aria-hidden="true" />
-            Listings use PESO and LGU employment datasets.
-          </p>
-          <Link to="/about/data-sources">
-            About Our Data Sources <ArrowRight size={15} aria-hidden="true" />
-          </Link>
-        </div>
-      </section>
+      <section className="public-home-content" aria-labelledby="featured-heading">
+        <div className="public-home-content__inner">
+          <div className="public-featured-jobs">
+            <div className="public-featured-jobs__heading">
+              <h2 id="featured-heading">Featured Jobs for You</h2>
+              <Link to="/jobs">
+                View all <ArrowRight size={14} aria-hidden="true" />
+              </Link>
+            </div>
 
-      <section className="public-start" aria-labelledby="start-heading">
-        <div className="public-start__inner">
-          <div className="public-start__heading">
-            <p className="kicker">Choose Where to Start</p>
-            <h2 id="start-heading">Start Exploring JobFinder</h2>
+            <div className="public-featured-jobs__list">
+              {featuredJobs.map((job) => (
+                <article
+                  aria-labelledby={`public-home-job-${job.id}`}
+                  className="public-job-card"
+                  key={job.id}
+                >
+                  <div className="public-job-card__topline">
+                    <span className="public-job-card__mark" aria-hidden="true">
+                      <BriefcaseBusiness size={18} />
+                    </span>
+                    <time dateTime={job.postedAt}>
+                      <Clock3 size={13} aria-hidden="true" />
+                      {formatPublicPostedAge(job.postedAt)}
+                    </time>
+                  </div>
+
+                  <div className="public-job-card__title-row">
+                    <h3 id={`public-home-job-${job.id}`}>
+                      <Link to={`/jobs/${encodeURIComponent(job.id)}`}>
+                        {job.title}
+                      </Link>
+                    </h3>
+                    {job.openingCount ? (
+                      <span>
+                        {job.openingCount} {job.openingCount === 1
+                          ? "opening"
+                          : "openings"}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <p className="public-job-card__employer">
+                    {job.employerName}
+                  </p>
+
+                  <ul className="public-job-card__tags" aria-label="Job type">
+                    <li>{job.workArrangement}</li>
+                    <li>{job.employmentType}</li>
+                    {job.tags.slice(0, 1).map((tag) => (
+                      <li key={tag}>{tag}</li>
+                    ))}
+                  </ul>
+
+                  <p className="public-job-card__summary">{job.summary}</p>
+
+                  <dl className="public-job-card__facts">
+                    <div>
+                      <dt className="sr-only">Location</dt>
+                      <dd>
+                        <MapPin size={14} aria-hidden="true" />
+                        {job.location.city}, {job.location.province}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="sr-only">Monthly salary</dt>
+                      <dd>{formatPublicSalary(job)}</dd>
+                    </div>
+                  </dl>
+
+                  <footer className="public-job-card__footer">
+                    <Link
+                      aria-label={`View details for ${job.title} at ${job.employerName}`}
+                      to={`/jobs/${encodeURIComponent(job.id)}`}
+                    >
+                      View Details
+                    </Link>
+                  </footer>
+                </article>
+              ))}
+
+              {isLoading && featuredJobs.length === 0 ? (
+                <p className="public-featured-jobs__status" role="status">
+                  Loading local jobs...
+                </p>
+              ) : null}
+              {!isLoading && featuredJobs.length === 0 ? (
+                <p className="public-featured-jobs__status">
+                  No active local jobs are available right now.
+                </p>
+              ) : null}
+            </div>
           </div>
 
-          <div className="public-start__grid">
-            <Link className="public-start-card is-featured" to="/jobs">
-              <div>
-                <p className="kicker">For Job Seekers</p>
-                <h3>Browse Local Jobs</h3>
-                <p>View nearby openings before you sign in.</p>
-              </div>
-              <ArrowRight size={19} aria-hidden="true" />
-            </Link>
+          <aside className="public-home-sidebar" aria-label="Local job tools">
+            <section className="public-sidebar-card public-local-insights">
+              <h2>
+                <TrendingUp size={17} aria-hidden="true" />
+                Local Insights
+              </h2>
+              <p>
+                JobFinder focuses on employment opportunities around Angeles
+                City using local employment information.
+              </p>
+              <Link to="/about/data-sources">
+                Read about our data
+                <ArrowRight size={14} aria-hidden="true" />
+              </Link>
+            </section>
 
-            <Link className="public-start-card" to="/employer">
-              <div>
-                <p className="kicker">For Employers</p>
-                <h3>Employer Workspace</h3>
-                <p>Post jobs and review suitable applicants.</p>
-              </div>
-              <ArrowRight size={19} aria-hidden="true" />
-            </Link>
-          </div>
+            <section className="public-sidebar-card public-categories">
+              <h2>Browse by Category</h2>
+              <ul>
+                {categoryCounts.map((category) => (
+                  <li key={category.label}>
+                    <Link to={`/jobs?q=${encodeURIComponent(category.query)}`}>
+                      {category.label}
+                    </Link>
+                    <span aria-label={`${category.count} jobs`}>
+                      {category.count}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <Link className="public-categories__all" to="/jobs">
+                All Categories
+              </Link>
+            </section>
+
+            <section className="public-profile-callout">
+              <h2>Get discovered</h2>
+              <p>
+                Create your profile so employers can find the skills you bring.
+              </p>
+              <Link to="/register">
+                Build your profile
+                <ArrowRight size={14} aria-hidden="true" />
+              </Link>
+            </section>
+          </aside>
         </div>
       </section>
     </div>

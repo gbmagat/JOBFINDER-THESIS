@@ -37,6 +37,12 @@ type RouteApiResult = {
   startingArea: string;
 };
 
+type SavedHomeLocation = {
+  areaName: string;
+  latitude: number;
+  longitude: number;
+};
+
 type SavedSearch = {
   alerts: boolean;
   barangay: string;
@@ -119,12 +125,23 @@ export function JobsPage() {
     latitude: number;
     longitude: number;
   } | null>(null);
+  const [savedHomeLocation, setSavedHomeLocation] =
+    useState<SavedHomeLocation | null>(null);
   const [mapRoute, setMapRoute] = useState<RouteApiResult | null>(null);
   const [mapRouteError, setMapRouteError] = useState("");
   const isLoading = jobsLoading || previewState === "loading";
   const hasServiceError = Boolean(jobsError) || previewState === "error";
   const isOffline = !isOnline || previewState === "offline";
   const isUnauthorized = previewState === "unauthorized";
+  const effectiveLocation = browserLocation ?? savedHomeLocation;
+  const effectiveLocationLabel = browserLocation
+    ? "You are here"
+    : savedHomeLocation
+      ? "Saved home area"
+      : "You are here";
+  const usingSavedHomeLocation = Boolean(
+    savedHomeLocation && !browserLocation,
+  );
   const barangayOptions = useMemo(
     () =>
       [...new Set(allJobs.map((job) => job.location.barangay))].sort((a, b) =>
@@ -242,6 +259,36 @@ export function JobsPage() {
   );
 
   useEffect(() => {
+    if (user?.role !== "job-seeker") {
+      setSavedHomeLocation(null);
+      return;
+    }
+
+    let active = true;
+    apiRequest<{
+      profile: { homeLocation: SavedHomeLocation | null };
+    }>("/profile")
+      .then(({ profile }) => {
+        if (!active) return;
+        const location = profile.homeLocation;
+        setSavedHomeLocation(
+          location &&
+            Number.isFinite(location.latitude) &&
+            Number.isFinite(location.longitude)
+            ? location
+            : null,
+        );
+      })
+      .catch(() => {
+        if (active) setSavedHomeLocation(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
     if (
       selectedJobId &&
       !results.some((job) => job.id === selectedJobId)
@@ -253,7 +300,7 @@ export function JobsPage() {
   }, [results, selectedJobId]);
 
   useEffect(() => {
-    if (!selectedJob || !browserLocation) {
+    if (!selectedJob || !effectiveLocation) {
       setMapRoute(null);
       setMapRouteError("");
       return;
@@ -278,7 +325,7 @@ export function JobsPage() {
           algorithm: "dijkstra",
           geometry: {
             coordinates: [
-              [browserLocation.longitude, browserLocation.latitude],
+              [effectiveLocation.longitude, effectiveLocation.latitude],
               ...(existingCoordinates.length
                 ? existingCoordinates
                 : destinationCoordinates),
@@ -296,8 +343,8 @@ export function JobsPage() {
     setMapRoute(null);
     setMapRouteError("");
     const locationQuery = new URLSearchParams({
-      latitude: String(browserLocation.latitude),
-      longitude: String(browserLocation.longitude),
+      latitude: String(effectiveLocation.latitude),
+      longitude: String(effectiveLocation.longitude),
     });
     apiRequest<RouteApiResult>(
       `/jobs/${encodeURIComponent(selectedJob.id)}/route?${locationQuery.toString()}`,
@@ -317,7 +364,7 @@ export function JobsPage() {
     return () => {
       active = false;
     };
-  }, [browserLocation, selectedJob]);
+  }, [effectiveLocation, selectedJob]);
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -470,31 +517,50 @@ export function JobsPage() {
   }
 
   return (
-    <div className="page jobs-page">
-      <header className="page-header">
-        <span className="eyebrow">
-          <MapPin size={16} aria-hidden="true" />
-          Opportunities near Angeles City
-        </span>
-        <h1>Search Local Jobs</h1>
-        <p>Start with the basics. More filters are available only when needed.</p>
+    <div className="page jobs-page jobs-page--directory">
+      <header className="page-header jobs-directory-header">
+        <div className="jobs-directory-hero">
+          <div className="jobs-directory-hero__inner">
+            <h1 className="jobs-directory-title">Search Local Jobs</h1>
 
-        <form className="search-bar search-bar--wide" onSubmit={handleSearch}>
-          <Search size={20} aria-hidden="true" />
-          <label className="sr-only" htmlFor="jobs-search">
-            Search jobs, skills, or employers
-          </label>
-          <input
-            id="jobs-search"
-            type="search"
-            placeholder="Search jobs, skills, or employers"
-            value={draftQuery}
-            onChange={(event) => setDraftQuery(event.target.value)}
-          />
-          <button className="button button--primary" type="submit">
-            Search
-          </button>
-        </form>
+            <div className="jobs-search-shell">
+              <form
+                className="search-bar search-bar--wide jobs-search-form"
+                onSubmit={handleSearch}
+                role="search"
+              >
+                <Search size={20} aria-hidden="true" />
+                <label className="sr-only" htmlFor="jobs-search">
+                  Search jobs, skills, or employers
+                </label>
+                <input
+                  id="jobs-search"
+                  type="search"
+                  placeholder="Search jobs, skills, or employers"
+                  value={draftQuery}
+                  onChange={(event) => setDraftQuery(event.target.value)}
+                />
+                <button className="button button--primary" type="submit">
+                  Find
+                </button>
+              </form>
+
+              <nav
+                aria-label="Search page shortcuts"
+                className="jobs-search-shortcuts"
+              >
+                <a href="#job-filters">
+                  <Filter size={17} aria-hidden="true" />
+                  Filters
+                </a>
+                <a href="#jobs-map-panel">
+                  <MapIcon size={17} aria-hidden="true" />
+                  Map View
+                </a>
+              </nav>
+            </div>
+          </div>
+        </div>
 
         <div className="mobile-toolbar">
           <button
@@ -548,6 +614,7 @@ export function JobsPage() {
         <aside
           className={`filter-panel${filtersOpen ? " filter-panel--open" : ""}`}
           aria-label="Job filters"
+          id="job-filters"
         >
           <div className="filter-panel__heading">
             <h2>Filters</h2>
@@ -897,6 +964,7 @@ export function JobsPage() {
                     onShowOnMap={() => showJobOnMap(job.id)}
                     showMatch={canShowPersonalizedMatch}
                     showSummary={false}
+                    showSource={false}
                     showDistanceFact
                   />
                 </div>
@@ -936,6 +1004,7 @@ export function JobsPage() {
           className={`map-panel map-panel--real${
             mobileMapOpen ? " map-panel--mobile-visible" : ""
           }`}
+          id="jobs-map-panel"
           aria-label={
             selectedJob
               ? `Map showing only ${selectedJob.title} and its route summary`
@@ -976,9 +1045,21 @@ export function JobsPage() {
               </button>
             </div>
           </div>
-          {locationStatus === "denied" ||
-          locationStatus === "unsupported" ||
-          previewState === "location-denied" ? (
+          {(locationStatus === "denied" ||
+            locationStatus === "unsupported" ||
+            previewState === "location-denied") &&
+          usingSavedHomeLocation ? (
+            <div className="map-permission-note map-permission-note--success" role="status">
+              <MapPin size={18} aria-hidden="true" />
+              <span>
+                <strong>Saved home area is shown on the map.</strong>
+                Your live device location is unavailable, so JobFinder is using
+                the approximate area saved in your profile.
+              </span>
+            </div>
+          ) : locationStatus === "denied" ||
+            locationStatus === "unsupported" ||
+            previewState === "location-denied" ? (
             <div className="map-permission-note" role="status">
               <AlertTriangle size={18} aria-hidden="true" />
               <span>
@@ -998,19 +1079,30 @@ export function JobsPage() {
                 route.
               </span>
             </div>
+          ) : usingSavedHomeLocation ? (
+            <div className="map-permission-note map-permission-note--success" role="status">
+              <MapPin size={18} aria-hidden="true" />
+              <span>
+                <strong>Saved home area is shown on the map.</strong>
+                Use current location for your live device position.
+              </span>
+            </div>
           ) : null}
           <JobMap
-            currentLocation={browserLocation}
+            currentLocation={effectiveLocation}
             jobs={visibleMapJobs}
             label={
               selectedJob
                 ? mapRoute
-                  ? `OpenStreetMap showing ${selectedJob.title}, your location, and the JobFinder route.`
-                  : `OpenStreetMap showing only ${selectedJob.title}. Use location to calculate a route.`
-                : `OpenStreetMap showing ${results.length} local job locations. Select a job to calculate its route.`
+                  ? `OpenStreetMap showing ${selectedJob.title}, ${effectiveLocationLabel.toLowerCase()}, and the JobFinder route.`
+                  : effectiveLocation
+                    ? `OpenStreetMap showing only ${selectedJob.title}. Select it to calculate a route from ${effectiveLocationLabel.toLowerCase()}.`
+                    : `OpenStreetMap showing only ${selectedJob.title}. Use location to calculate a route.`
+                : `OpenStreetMap showing ${results.length} local job locations${effectiveLocation ? ` and ${effectiveLocationLabel.toLowerCase()}` : ""}. Select a job to calculate its route.`
             }
+            locationLabel={effectiveLocationLabel}
             onSelectJob={showJobOnMap}
-            route={browserLocation ? mapRoute?.route : undefined}
+            route={effectiveLocation ? mapRoute?.route : undefined}
             selectedJobId={selectedJob?.id}
             testId="jobs-map"
           />
@@ -1021,8 +1113,8 @@ export function JobsPage() {
                 Selected job: {selectedJob.title}
                 <br />
                 {mapRoute
-                  ? `${mapRoute.route.distanceKm.toFixed(1)} km from your current location.`
-                  : browserLocation
+                  ? `${mapRoute.route.distanceKm.toFixed(1)} km from ${browserLocation ? "your current location" : "your saved home area"}.`
+                  : effectiveLocation
                     ? mapRouteError || "Calculating the shortest route..."
                     : `Job location: ${selectedJob.location.venue}, ${selectedJob.location.barangay}, ${selectedJob.location.city}.`}
               </p>

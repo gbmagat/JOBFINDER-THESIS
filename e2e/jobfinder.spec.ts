@@ -199,7 +199,7 @@ test.describe.serial("JobFinder critical user journeys", () => {
     await expect(selectedJobResult).not.toHaveClass(/is-selected/);
     await expect(selectedJobCard).toHaveCSS(
       "border-color",
-      "rgb(183, 173, 163)",
+      "rgb(112, 133, 154)",
     );
     await expect(
       page.getByRole("heading", { name: "3 Jobs Shown" }),
@@ -270,6 +270,29 @@ test.describe.serial("JobFinder critical user journeys", () => {
     await page.goto(`/jobs/${jobId}/route`);
     await expect(page.getByTestId("route-map")).toBeVisible();
     expect(pageErrors).toEqual([]);
+  });
+
+  test("a signed-in seeker sees the saved home area without live location", async ({
+    page,
+  }) => {
+    await useOfflineOpenStreetMapTiles(page);
+    await signIn(page, seeker, "job-seeker");
+    await page.goto("/jobs");
+
+    const jobsMap = page.getByTestId("jobs-map");
+    await expect(jobsMap.getByText("Saved home area", { exact: true })).toBeVisible();
+    await expect(jobsMap.getByText("You are here", { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText("Saved home area is shown on the map.", { exact: true }),
+    ).toBeVisible();
+
+    await page.locator(".job-card", { hasText: jobTitle }).click({
+      position: { x: 260, y: 120 },
+    });
+    await expect(jobsMap).not.toHaveAttribute("data-route-id", "");
+    await expect(
+      page.getByText(/km from your saved home area/i),
+    ).toBeVisible();
   });
 
   test("a job seeker signs in through the apply gate and submits a PDF", async ({

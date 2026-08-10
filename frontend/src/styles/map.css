@@ -1,13 +1,13 @@
 .job-map-shell {
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
+  border-radius: 0.25rem;
   background: #ffffff;
 }
 
 .job-map__viewport {
   position: relative;
-  background: #eedda9;
+  background: #e7edf2;
 }
 
 .job-map {
@@ -28,9 +28,10 @@
   left: 0.75rem;
   margin: 0;
   padding: 0.65rem 0.8rem;
-  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.2rem;
   background: rgb(255 255 255 / 92%);
-  box-shadow: 0 0.5rem 1.25rem rgb(30 48 84 / 15%);
+  box-shadow: var(--shadow-xs);
   color: var(--palette-navy);
   font-size: 0.78rem;
   line-height: 1.45;
@@ -68,7 +69,7 @@
   place-items: center;
   border: 3px solid #ffffff;
   border-radius: 50%;
-  background: #f7f5ef;
+  background: var(--slate-50);
   box-shadow: 0 0.35rem 0.9rem rgb(30 48 84 / 28%);
   color: var(--palette-indigo);
 }
@@ -162,7 +163,7 @@
 
 .leaflet-container {
   z-index: 0;
-  background: #eedda9;
+  background: #e7edf2;
   font-family: "Montserrat Variable", Montserrat, sans-serif;
 }
 
@@ -258,7 +259,7 @@
   overflow: hidden;
   border: 1px solid var(--jf-color-border-default);
   border-radius: var(--jf-radius-8);
-  background: var(--palette-cream);
+  background: var(--slate-50);
 }
 
 .home-location-map__canvas {

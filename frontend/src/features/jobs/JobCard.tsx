@@ -7,7 +7,9 @@ import type { JobListing } from "./types";
 export interface JobCardProps {
   job: JobListing;
   showMatch?: boolean;
+  showMatchEvidence?: boolean;
   showSummary?: boolean;
+  showSource?: boolean;
   showDistanceFact?: boolean;
   isShownOnMap?: boolean;
   onShowOnMap?: () => void;
@@ -16,12 +18,21 @@ export interface JobCardProps {
 export function JobCard({
   job,
   showMatch = false,
+  showMatchEvidence = false,
   showSummary = true,
+  showSource = true,
   showDistanceFact = false,
   isShownOnMap = false,
   onShowOnMap,
 }: JobCardProps): ReactElement {
   const detailsHref = `/jobs/${encodeURIComponent(job.id)}`;
+  const matchingSkillLabels = Array.from(
+    new Set(
+      [...job.fit.exactSkills, ...job.fit.relatedSkills].map(
+        (skill) => skill.label,
+      ),
+    ),
+  ).slice(0, 2);
 
   return (
     <article className="job-card white-card" aria-labelledby={`job-${job.id}`}>
@@ -41,9 +52,11 @@ export function JobCard({
 
       <div className="job-card__header">
         <div>
-          <p className="job-card__source source-label">
-            {jobSourceLabel(job.source)}
-          </p>
+          {showSource ? (
+            <p className="job-card__source source-label">
+              {jobSourceLabel(job.source)}
+            </p>
+          ) : null}
           <h2 className="job-card__title text-dark-blue" id={`job-${job.id}`}>
             <Link className="job-card__title-link dark-blue-link" to={detailsHref}>
               {job.title}
@@ -67,6 +80,12 @@ export function JobCard({
         {job.location.barangay}, {job.location.city}
         {!showDistanceFact ? ` · ${job.route.distanceKm.toFixed(1)} km away` : ""}
       </p>
+
+      {showMatch && showMatchEvidence && matchingSkillLabels.length > 0 ? (
+        <p className="job-card__match-evidence">
+          <strong>Matches:</strong> {matchingSkillLabels.join(", ")}
+        </p>
+      ) : null}
 
       <ul className="job-card__facts" aria-label="Job summary">
         <li>{job.employmentType}</li>

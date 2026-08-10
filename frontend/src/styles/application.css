@@ -98,7 +98,7 @@
 }
 
 .application-stepper__item.is-current > button {
-  background: #f5ecd3;
+  background: #eef3f1;
   color: var(--palette-navy);
 }
 
@@ -702,4 +702,35 @@
   .application-stepper__item > button {
     min-height: 4.25rem;
   }
+}
+
+/* Flat application workflow shared by desktop and mobile. */
+.application-page :is(
+    .application-stepper,
+    .application-step-panel,
+    .application-review__section,
+    .application-confirmation,
+    .application-confirmation__details,
+    .application-confirmation-check,
+    .handoff-card,
+    .handoff-instructions,
+    .alternate-methods,
+    .file-field
+  ) {
+  border-radius: 0.25rem;
+  box-shadow: none;
+}
+
+.application-page .application-step-panel,
+.application-page .application-confirmation,
+.application-page .handoff-card {
+  padding: 1rem;
+}
+
+.application-page .application-confirmation {
+  background: var(--white);
+}
+
+.application-page .application-stepper__item.is-current > button {
+  background: var(--slate-100);
 }

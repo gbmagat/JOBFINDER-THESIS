@@ -1,12 +1,38 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { JOBS } from "./data";
+import { JOBS, jobSourceLabel } from "./data";
 import { JobCard } from "./JobCard";
 
 afterEach(cleanup);
 
 describe("JobCard", () => {
+  it("shows concrete skill evidence for a personalized recommendation", () => {
+    render(
+      <MemoryRouter>
+        <JobCard job={JOBS[0]} showMatch showMatchEvidence />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Matches:")).toBeInTheDocument();
+    expect(
+      screen.getByText("Computer troubleshooting, Customer support"),
+    ).toBeInTheDocument();
+  });
+
+  it("can omit repeated source and summary text on compact cards", () => {
+    render(
+      <MemoryRouter>
+        <JobCard job={JOBS[0]} showSource={false} showSummary={false} />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByText(jobSourceLabel(JOBS[0].source)),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(JOBS[0].summary)).not.toBeInTheDocument();
+  });
+
   it("uses the card surface for map selection without visible map-action text", () => {
     const onShowOnMap = vi.fn();
 

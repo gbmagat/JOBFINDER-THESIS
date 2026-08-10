@@ -25,6 +25,11 @@ const BARANGAY_BY_HOME_NODE = {
 
 function profileResponse(db, userId) {
   const profile = db.prepare("SELECT * FROM profiles WHERE user_id = ?").get(userId);
+  const homeLocation = db.prepare(`
+    SELECT name, latitude, longitude
+    FROM geo_nodes
+    WHERE id = ?
+  `).get(profile.home_node_id);
   const skills = db.prepare(`
     SELECT skills.id, skills.name, user_skills.source
     FROM user_skills
@@ -39,6 +44,13 @@ function profileResponse(db, userId) {
     barangay: profile.barangay,
     city: profile.city,
     homeNodeId: profile.home_node_id,
+    homeLocation: homeLocation
+      ? {
+          areaName: homeLocation.name,
+          latitude: homeLocation.latitude,
+          longitude: homeLocation.longitude,
+        }
+      : null,
     preferredWorkTypes: JSON.parse(profile.preferred_work_types_json),
     skills,
     updatedAt: profile.updated_at,

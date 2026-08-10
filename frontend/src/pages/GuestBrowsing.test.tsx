@@ -9,7 +9,11 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { AuthProvider } from "../features/auth/AuthContext";
+import {
+  AUTH_USER_STORAGE_KEY,
+  AuthProvider,
+} from "../features/auth/AuthContext";
+import * as api from "../lib/api";
 import { JobDetailPage } from "./JobDetailPage";
 import { JobsPage } from "./JobsPage";
 
@@ -50,6 +54,19 @@ function allowCurrentLocation() {
           },
         } as GeolocationPosition);
       }),
+    },
+  });
+}
+
+function denyCurrentLocation() {
+  Object.defineProperty(window.navigator, "geolocation", {
+    configurable: true,
+    value: {
+      getCurrentPosition: vi.fn(
+        (_success: PositionCallback, error: PositionErrorCallback) => {
+          error({ code: 1 } as GeolocationPositionError);
+        },
+      ),
     },
   });
 }
@@ -233,5 +250,69 @@ describe("guest job browsing", () => {
     expect(
       screen.getAllByRole("button", { name: "Sign In to Apply" }),
     ).toHaveLength(2);
+  });
+});
+
+describe("signed-in job seeker location fallback", () => {
+  it("uses the saved home area when live browser location is unavailable", async () => {
+    const user = {
+      id: "saved-home-user",
+      email: "saved-home@example.com",
+      displayName: "Saved Home User",
+      role: "job-seeker",
+    };
+    window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+    vi.spyOn(api, "apiRequest").mockResolvedValue({
+      profile: {
+        homeLocation: {
+          areaName: "Balibago",
+          latitude: 15.1667,
+          longitude: 120.5874,
+        },
+      },
+    });
+    denyCurrentLocation();
+
+    render(
+      <AuthProvider storage={window.localStorage}>
+        <MemoryRouter initialEntries={["/jobs"]}>
+          <JobsPage />
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+
+    const markerKey = await screen.findByRole("list", {
+      name: "Map marker key",
+    });
+    expect(within(markerKey).getByText("Saved home area")).toBeInTheDocument();
+    expect(within(markerKey).queryByText("You are here")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use current location" }),
+    );
+    expect(
+      await screen.findByText(
+        "Your live device location is unavailable, so JobFinder is using the approximate area saved in your profile.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Your location is not available."),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Select IT Support Assistant on map",
+      }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("jobs-map").getAttribute("data-route-id"),
+      ).not.toBe("");
+    });
+    expect(
+      screen.getByLabelText(
+        "OpenStreetMap showing IT Support Assistant, saved home area, and the JobFinder route.",
+      ),
+    ).toBeInTheDocument();
   });
 });

@@ -34,6 +34,7 @@ interface JobMapProps {
   currentLocation?: CurrentMapLocation | null;
   jobs?: JobMapPoint[];
   label: string;
+  locationLabel?: string;
   onSelectJob?: (jobId: string) => void;
   route?: RouteOption | null;
   selectedJobId?: string | null;
@@ -105,6 +106,7 @@ export function JobMap({
   currentLocation,
   jobs = [],
   label,
+  locationLabel = "You are here",
   onSelectJob,
   route,
   selectedJobId,
@@ -125,6 +127,8 @@ export function JobMap({
     isCoordinate(currentLocation.latitude, currentLocation.longitude)
       ? currentLocation
       : null;
+  const accessibleLocationLabel =
+    locationLabel === "You are here" ? "Your location" : locationLabel;
   const visibleRoute = mapLocation ? route : null;
   const visibleRoutePointCount = routeCoordinatesToLatLng(visibleRoute).length;
   const hasRoute = visibleRoutePointCount >= 2;
@@ -291,16 +295,16 @@ export function JobMap({
       const userLocationMarker = L.marker(position, {
         icon: markerIcon("user"),
         keyboard: false,
-        title: "You are here",
+        title: locationLabel,
       })
-        .bindTooltip("You are here", {
+        .bindTooltip(locationLabel, {
           direction: "top",
           offset: [0, -14],
         })
         .addTo(overlays);
       userLocationMarker
         .getElement()
-        ?.setAttribute("aria-label", "You are here");
+        ?.setAttribute("aria-label", locationLabel);
       userLocationMarker.getElement()?.setAttribute("role", "img");
     }
 
@@ -309,7 +313,7 @@ export function JobMap({
     } else {
       map.setView(ANGELES_CITY_CENTER, 13, { animate: false });
     }
-  }, [jobs, mapLocation, onSelectJob, selectedJobId, visibleRoute]);
+  }, [jobs, locationLabel, mapLocation, onSelectJob, selectedJobId, visibleRoute]);
 
   return (
     <div
@@ -352,7 +356,7 @@ export function JobMap({
                 aria-hidden="true"
                 className="job-map__legend-symbol job-map__legend-symbol--user"
               />
-              You are here
+              {locationLabel}
             </span>
           ) : null}
           {hasSelectedJob ? (
@@ -369,13 +373,13 @@ export function JobMap({
       <p className="sr-only">
         {validJobCount} job {validJobCount === 1 ? "marker" : "markers"} shown.
         {hasRoute && visibleRoute
-          ? ` Your location and the selected job are shown. Route ${visibleRoute.routeId} runs from your location to the selected job and contains ${visibleRoutePointCount} mapped points.`
+          ? ` ${accessibleLocationLabel} and the selected job are shown. Route ${visibleRoute.routeId} runs from ${accessibleLocationLabel.toLowerCase()} to the selected job and contains ${visibleRoutePointCount} mapped points.`
           : hasSelectedJob && mapLocation
-            ? " Your location and the selected job are shown. No route line is available."
+            ? ` ${accessibleLocationLabel} and the selected job are shown. No route line is available.`
             : hasSelectedJob
-              ? " Only the selected job location is shown. Your location is not available."
+              ? ` Only the selected job location is shown. ${accessibleLocationLabel} is not available.`
               : mapLocation
-                ? " Your location is also shown. No route line is available."
+                ? ` ${accessibleLocationLabel} is also shown. No route line is available.`
                 : " No route line is available."}
       </p>
     </div>

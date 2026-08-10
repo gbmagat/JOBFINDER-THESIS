@@ -146,7 +146,7 @@ export function SignInPage() {
   });
 
   return (
-    <main className="auth-page">
+    <main className="auth-page auth-page--account auth-page--sign-in">
       <section className="auth-page__panel">
         <Link className="back-link" to={selectedJob ? `/jobs/${selectedJob.id}` : "/"}>
           <ArrowLeft size={18} aria-hidden="true" />
@@ -158,28 +158,12 @@ export function SignInPage() {
             <h1>{selectedJob ? "Sign In to Apply" : "Welcome Back"}</h1>
             <p>
               {selectedJob
-                ? "Enter your account details. We will return you to this job after sign in."
+                ? "Sign in to continue your application."
                 : requestedRole === "employer"
-                  ? "Sign in to manage direct job posts and candidates."
-                  : "Sign in to open your saved jobs, applications, and profile."}
+                  ? "Sign in to manage jobs and applications."
+                  : "Sign in to your JobFinder account."}
             </p>
           </header>
-          <nav className="auth-mode-switch" aria-label="Account access">
-            <span
-              aria-current="page"
-              className="auth-mode-switch__option is-active"
-            >
-              Sign In
-            </span>
-            <span className="auth-mode-switch__divider" aria-hidden="true" />
-            <Link
-              className="auth-mode-switch__option"
-              to={`/register?${registerSearch.toString()}`}
-              viewTransition
-            >
-              Register
-            </Link>
-          </nav>
 
           <div className="auth-card">
           {selectedJob ? (
@@ -211,7 +195,12 @@ export function SignInPage() {
             </div>
           ) : null}
 
-          <form className="auth-form" noValidate onSubmit={handleSubmit}>
+          <form
+            aria-busy={submitting}
+            className="auth-form"
+            noValidate
+            onSubmit={handleSubmit}
+          >
             {Object.keys(fieldErrors).length || error ? (
               <div
                 className="form-error-summary"
@@ -325,17 +314,13 @@ export function SignInPage() {
           </div>
 
           <p className="auth-switch">
-            New to JobFinder?{" "}
+            No account?{" "}
             <Link
               to={`/register?${registerSearch.toString()}`}
               viewTransition
             >
-              Register{selectedJob ? " and Continue" : ""}
+              Create one{selectedJob ? " and continue" : ""}
             </Link>
-          </p>
-
-          <p className="auth-card__fine-print">
-            Use the email and password registered with your account.
           </p>
         </div>
       </section>

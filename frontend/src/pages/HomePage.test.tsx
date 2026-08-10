@@ -8,11 +8,28 @@ import {
 import {
   PROFILE_DETAILS_KEY,
   PROFILE_SKILLS_KEY,
+  WORK_TYPES_KEY,
 } from "../features/profile/storage";
 import { userStorageKey } from "../lib/storage-keys";
 import { HomePage } from "./HomePage";
 
-vi.mock("../features/jobs/JobCard", () => ({ JobCard: () => null }));
+vi.mock("../features/jobs/JobCard", () => ({
+  JobCard: ({
+    job,
+    showMatchEvidence,
+  }: {
+    job: { fit: { overallScore: number }; title: string };
+    showMatchEvidence?: boolean;
+  }) => (
+    <div
+      data-match-evidence={String(Boolean(showMatchEvidence))}
+      data-score={job.fit.overallScore}
+      data-testid="home-job-card"
+    >
+      {job.title}
+    </div>
+  ),
+}));
 
 afterEach(() => {
   cleanup();
@@ -30,27 +47,40 @@ function renderGuestHome() {
 }
 
 describe("HomePage guest experience", () => {
-  it("shows the public gateway without the rejected hero or match data", () => {
-    renderGuestHome();
+  it("shows the local public job gateway without match data", () => {
+    const { container } = renderGuestHome();
 
     expect(
-      screen.getByRole("heading", { level: 1, name: "Welcome to JobFinder" }),
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Find your next opportunity.",
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: /Find work closer to home/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Start Exploring JobFinder" }),
+      screen.getByRole("heading", { name: "Featured Jobs for You" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: "Recently Added Jobs" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("heading", { name: "Local Insights" }),
+    ).toBeInTheDocument();
     expect(
-      screen.queryByAltText(/colleagues reviewing work/i),
-    ).not.toBeInTheDocument();
+      screen.getByRole("heading", { name: "Browse by Category" }),
+    ).toBeInTheDocument();
     expect(
-      screen.queryByText(/No account/i),
-    ).not.toBeInTheDocument();
+      screen.getByRole("heading", { name: "Get discovered" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("link", { name: "Customer Service Associate" }),
+    ).toHaveLength(2);
+    expect(
+      screen.getByRole("link", { name: "IT Support Assistant" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Junior Web Developer" }),
+    ).toBeInTheDocument();
+    expect(container.querySelectorAll("article.public-job-card")).toHaveLength(4);
+    expect(
+      screen.getAllByRole("link", { name: /View details for/i }),
+    ).toHaveLength(4);
     expect(
       screen.queryByLabelText(/percent overall match/i),
     ).not.toBeInTheDocument();
@@ -81,10 +111,10 @@ describe("HomePage job seeker state", () => {
       screen.queryByRole("region", { name: "Job seeker summary" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Explore Local Jobs" }),
+      screen.getByRole("heading", { name: "Local jobs" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Set Up Your Profile" }),
+      screen.getByRole("link", { name: "Set up your profile" }),
     ).toHaveAttribute("href", "/onboarding/profile");
     expect(screen.queryByText(/\d+% match/i)).not.toBeInTheDocument();
     expect(
@@ -113,6 +143,10 @@ describe("HomePage job seeker state", () => {
       userStorageKey(PROFILE_SKILLS_KEY, user.id),
       JSON.stringify(["Troubleshooting"]),
     );
+    window.localStorage.setItem(
+      userStorageKey(WORK_TYPES_KEY, user.id),
+      JSON.stringify(["On-site"]),
+    );
 
     render(
       <MemoryRouter initialEntries={["/"]}>
@@ -123,9 +157,27 @@ describe("HomePage job seeker state", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Best Matches" }),
+      screen.getByRole("heading", { name: "Top matches" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Personalized ranking")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Jobs for Complete" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Balibago, Angeles City").length).toBeGreaterThan(0);
+    expect(screen.getByText("On-site")).toBeInTheDocument();
+    expect(screen.getByText("Troubleshooting")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Your profile" }),
+    ).toBeInTheDocument();
+    const recommendedCards = screen.getAllByTestId("home-job-card");
+    const scores = recommendedCards.map((card) => Number(card.dataset.score));
+    expect(scores).toEqual([...scores].sort((first, second) => second - first));
+    expect(
+      recommendedCards.every(
+        (card) => card.dataset.matchEvidence === "true",
+      ),
+    ).toBe(true);
+    expect(screen.queryByText(/Good Morning/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Personalized ranking")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/commute limit|travel limit|minutes/i),
     ).not.toBeInTheDocument();

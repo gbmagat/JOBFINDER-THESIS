@@ -193,6 +193,11 @@ test("development demo accounts can sign in", async () => {
       });
       assert.equal(profile.response.status, 200);
       assert.equal(profile.body.profile.homeNodeId, "balibago");
+      assert.deepEqual(profile.body.profile.homeLocation, {
+        areaName: "Balibago",
+        latitude: 15.1667,
+        longitude: 120.5874,
+      });
       assert.equal(profile.body.profile.skills.length, 10);
       assert.equal("maximumDistanceKm" in profile.body.profile, false);
       assert.equal("maximumMinutes" in profile.body.profile, false);
@@ -640,6 +645,27 @@ test("a seeker can pin an approximate home area without storing coordinates", as
   const unchanged = await request("/api/profile", { headers });
   assert.equal(unchanged.body.profile.homeNodeId, "balibago");
   assert.equal(unchanged.body.profile.barangay, "");
+
+  const saved = await request("/api/profile", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      fullName: "Home Pin Seeker",
+      mobileNumber: "09171234567",
+      barangay: resolved.body.location.barangay,
+      city: resolved.body.location.city,
+      homeNodeId: resolved.body.location.homeNodeId,
+      preferredWorkTypes: [],
+    }),
+  });
+  assert.equal(saved.response.status, 200);
+  assert.deepEqual(saved.body.profile.homeLocation, {
+    areaName: "Nepo Center",
+    latitude: 15.1458,
+    longitude: 120.5882,
+  });
+  assert.notEqual(saved.body.profile.homeLocation.latitude, 15.1459);
+  assert.notEqual(saved.body.profile.homeLocation.longitude, 120.5883);
 
   const invalid = await request("/api/profile/location/resolve", {
     method: "POST",
