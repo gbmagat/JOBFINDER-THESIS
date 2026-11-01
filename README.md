@@ -11,7 +11,6 @@ employer, and PESO administrator functions.
 
 - [Live website](https://jobfinderangeles.site)
 - [Docker image](https://hub.docker.com/r/gabmagat/jobfinder)
-- [Source code](https://github.com/aizukiontop/Jobfinder)
 - [Detailed Docker installation and evaluation guide](DOCKER.md)
 
 ## Run with Docker (recommended for evaluators)
