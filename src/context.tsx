@@ -1,0 +1,846 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+
+import type {
+  ApplicantRecord,
+  Application,
+  Employer,
+  EmployerJob,
+  Job,
+  Page,
+  User,
+  RecommendationPreferences,
+  RecommendationScore,
+  UserRole,
+} from './types'
+
+import * as api from './lib/api'
+import { pathToRoute, routeToPath } from './lib/router'
+import { skillMatchScore } from './lib/skillMatch'
+import { explainSkillMatch, type SkillMatchDetail } from './lib/ontology'
+import { computeMatchScore, DEFAULT_SKILL_WEIGHT_PERCENT } from './config/matching'
+import { computeDistanceScore } from './config/geo'
+import { loadRoadGraph, snapToGraph, type RoadGraph } from './lib/roadGraph'
+import { dijkstra } from './lib/dijkstra'
+
+// ── Road graph singleton — lazy-loaded once and cached for the session ─────────
+// All Dijkstra scoring calls share this reference so the 1.96 MB JSON is only
+// fetched once. The promise is stored so concurrent callers await the same load.
+let _roadGraphPromise: Promise<RoadGraph> | null = null
+
+function getRoadGraph(): Promise<RoadGraph> {
+  if (!_roadGraphPromise) {
+    _roadGraphPromise = loadRoadGraph()
+  }
+  return _roadGraphPromise
+}
+
+/**
+ * Compute the Dijkstra-based DistanceScore G(a,j) for a user→job pair.
+ *
+ * Thesis §Method (p.25):
+ *   DistanceScore = 1 / (1 + NormalizedDistance)
+ *   NormalizedDistance = shortestPathKm / MAX_REFERENCE_DISTANCE_KM
+ *
+ * Returns 0 if:
+ *   • coordinates are missing
+ *   • either point snaps too far from the road network
+ *   • Dijkstra finds no path (disconnected subgraph)
+ */
+async function computeDijkstraDistance(
+  userLat: number,
+  userLng: number,
+  jobLat: number,
+  jobLng: number
+): Promise<DistanceResult> {
+  const unavailable: DistanceResult = { distanceScore: 0, accessibilityStatus: 'route-unavailable', routeKm: null, snapKm: null, totalKm: null }
+  try {
+    const graph = await getRoadGraph()
+    const snapUser = snapToGraph(userLat, userLng, graph)
+    const snapJob  = snapToGraph(jobLat,  jobLng,  graph)
+    if (!snapUser || !snapJob) return unavailable
+
+    const result = dijkstra(graph, snapUser.nodeId, snapJob.nodeId)
+    if (!result.found) return unavailable
+
+    // Total road distance = Dijkstra path + snap offsets
+    const totalKm = result.distanceKm + snapUser.snapDistKm + snapJob.snapDistKm
+    return {
+      distanceScore: computeDistanceScore(totalKm),
+      accessibilityStatus: 'available',
+      routeKm: result.distanceKm,
+      snapKm: snapUser.snapDistKm + snapJob.snapDistKm,
+      totalKm,
+    }
+  } catch {
+    return unavailable
+  }
+}
+
+type DistanceResult = Omit<RecommendationScore, 'skillScore' | 'skillWeightPercent' | 'total'>
+
+const DEFAULT_PREFERENCES: RecommendationPreferences = { skillWeightPercent: DEFAULT_SKILL_WEIGHT_PERCENT, notificationEmails: true }
+
+const LEGACY_STORAGE_KEYS = [
+  'jf_accounts',
+  'jf_employers',
+  'jf_user',
+  'jf_employer',
+  'jf_saved',
+  'jf_apps',
+  'jf_posted',
+  'jf_employer_jobs',
+  'jf_applicants',
+  'jf_data_version',
+] as const
+
+const TRACKING_PARAMS = new Set([
+  'fbclid', 'gclid', 'gbraid', 'wbraid', 'msclkid', 'dclid',
+  'twclid', 'igshid', 'mc_cid', 'mc_eid', 'ref', 'ref_src', '_ga',
+])
+
+const STORAGE_CLEANUP_MARKER = 'jobfinder_server_backed_cleanup_v1'
+
+function clearLegacyBrowserDataOnce() {
+  if (typeof window === 'undefined') return
+  try {
+    if (window.localStorage.getItem(STORAGE_CLEANUP_MARKER)) return
+    for (const key of LEGACY_STORAGE_KEYS) window.localStorage.removeItem(key)
+    window.localStorage.setItem(STORAGE_CLEANUP_MARKER, 'complete')
+  } catch {
+  }
+}
+
+function toUser(profile: any): User {
+  return {
+    id: profile.id,
+    email: profile.email,
+    password: '',
+    firstName: profile.firstName ?? '',
+    lastName: profile.lastName ?? '',
+    headline: profile.headline ?? '',
+    photo: profile.photo ?? '',
+    skills: profile.skills ?? [],
+    preferredLocation: profile.preferredLocation ?? '',
+    preferredEmploymentType: profile.preferredEmploymentType ?? '',
+    careerCategory: profile.careerCategory ?? '',
+    education: profile.education ?? '',
+    experienceLevel: profile.experienceLevel ?? '',
+    resumeName: profile.resumeName ?? '',
+    visibility: profile.visibility ?? 'private',
+    resumeDate: profile.resumeDate ?? '',
+    role: 'job-seeker',
+    barangay: profile.barangay ?? null,
+    lat: profile.lat ?? null,
+    lng: profile.lng ?? null,
+  }
+}
+
+function toEmployer(profile: any): Employer {
+  return {
+    id: profile.id,
+    email: profile.email,
+    password: '',
+    contactName: profile.contactName ?? '',
+    companyName: profile.companyName ?? '',
+    industry: profile.industry ?? '',
+    description: profile.description ?? '',
+    address: profile.address ?? '',
+    contactEmail: profile.contactEmail ?? profile.email,
+    contactPhone: profile.contactPhone ?? '',
+    website: profile.website ?? '',
+    companySize: profile.companySize ?? '',
+  }
+}
+
+function toEmployerJob(dto: any): EmployerJob {
+  return {
+    id: dto.id,
+    employerId: dto.postedBy ?? '',
+    title: dto.title ?? '',
+    company: dto.company ?? '',
+    category: dto.category ?? '',
+    description: dto.description ?? '',
+    requirements: Array.isArray(dto.requirements)
+      ? dto.requirements.join('\n')
+      : dto.requirements ?? '',
+    employmentType: dto.employmentType ?? '',
+    workArrangement: dto.workArrangement ?? '',
+    location: dto.location ?? '',
+    city: dto.city ?? '',
+    barangay: dto.barangay ?? null,
+    address: dto.address ?? '',
+    salary: dto.salary ?? '',
+    salaryMin: dto.salaryMin ?? 0,
+    salaryMax: dto.salaryMax ?? 0,
+    openings: dto.openings ?? 1,
+    deadline: dto.expirationDate ?? '',
+    status: dto.status ?? 'draft',
+    reviewStatus: dto.reviewStatus,
+    reviewReason: dto.reviewReason,
+    reviewVersion: dto.reviewVersion,
+    postedDate: dto.datePosted ?? '',
+    daysAgo: dto.daysAgo ?? 0,
+    applicantCount: dto.applicantCount ?? 0,
+    requiredSkills: dto.requiredSkills ?? [],
+    preferredSkills: dto.preferredSkills ?? [],
+    skills: dto.skills ?? dto.requiredSkills ?? [],
+    experienceLevel: dto.experienceLevel ?? '',
+    lat: dto.lat ?? undefined,
+    lng: dto.lng ?? undefined,
+    coordinateSource: dto.coordinateSource ?? undefined,
+  }
+}
+
+function toApplicantRecord(dto: any): ApplicantRecord {
+  return {
+    id: dto.id,
+    jobId: dto.jobId,
+    jobTitle: dto.jobTitle ?? '',
+    applicantName: dto.applicantName ?? `${dto.firstName ?? ''} ${dto.lastName ?? ''}`.trim(),
+    applicantEmail: dto.applicantEmail ?? dto.email ?? '',
+    appliedDate: dto.dateApplied ?? '',
+    matchScore: dto.matchScorePercent ?? dto.matchScore ?? 0,
+    status: dto.status ?? 'applied',
+    phone: dto.phone ?? '',
+    coverLetter: dto.coverLetter ?? '',
+    resumeName: dto.resumeName ?? '',
+    photo: dto.photo ?? '',
+    applicantSkills: dto.applicantSkills ?? [],
+  }
+}
+
+interface AppState {
+  page: Page
+  selectedJobId: string | null
+  prevPage: Page | null
+
+  user: User | null
+  employer: Employer | null
+  searchQuery: string
+
+  savedJobIds: string[]
+  applications: Application[]
+  postedJobs: Job[]
+  employerJobs: EmployerJob[]
+  allApplicants: ApplicantRecord[]
+
+  sessionLoading: boolean
+  resetToken: string | null
+
+  signIn: (
+    email: string,
+    password: string,
+    rememberMe?: boolean,
+    role?: 'job-seeker' | 'employer'
+  ) => Promise<UserRole>
+  signUp: (
+    input: api.SeekerRegistration | api.EmployerRegistration
+  ) => Promise<UserRole>
+  signOut: () => Promise<void>
+
+  setUser: (user: User | null) => void
+  setEmployer: (employer: Employer | null) => void
+  toggleSave: (jobId: string) => Promise<boolean>
+  submitApplication: (jobId: string, input: api.ApplicationInput) => Promise<Application>
+  addApplication: (application: Application) => void
+  addPostedJob: (job: Job) => void
+  addEmployerJob: (job: EmployerJob) => void
+  updateEmployerJob: (id: string, updates: Partial<EmployerJob>) => Promise<boolean>
+  updateApplicantStatus: (id: string, status: ApplicantRecord['status']) => Promise<boolean>
+  updateEmployer: (updates: Partial<Employer>) => Promise<boolean>
+  updateUser: (updates: Partial<User>) => Promise<boolean>
+  hasApplied: (jobId: string) => boolean
+  getApplicantCount: (jobId: string) => number
+  getApplicantsForJob: (jobId: string) => ApplicantRecord[]
+
+  userLat: number | null
+  userLng: number | null
+  userInsideCity: boolean | null
+  matchLat: number | null
+  matchLng: number | null
+  locMode: 'gps' | 'pin'
+  setUserLocation: (
+    lat: number,
+    lng: number,
+    inside: boolean,
+    mode: 'gps' | 'pin'
+  ) => void
+  clearUserLocation: () => void
+
+  navigate: (page: Page, jobId?: string | null) => void
+  setSearchQuery: (query: string) => void
+
+  allJobs: Job[]
+  jobsLoading: boolean
+  jobsError: string | null
+  actionError: string | null
+  dismissActionError: () => void
+  reloadJobs: () => Promise<void>
+
+  /** Ontology-based SkillMatchScore S(a,j), in the range [0,1]. */
+  calculateSkillMatchScore: (job: Job) => number
+
+  /**
+   * Per-requirement ontology breakdown — re-exposes the same BFS values that
+   * produce calculateSkillMatchScore(). Used for the explainability UI only.
+   * Does NOT affect SkillMatchScore or MatchScore in any way.
+   */
+  isAdmin: boolean
+  adminProfile: { id: string; email: string; officeName: string } | null
+  refreshAccountData: () => Promise<void>
+
+  preferences: RecommendationPreferences
+  preferencesSaving: boolean
+  preferencesError: string | null
+  savePreferences: (updates: Partial<RecommendationPreferences>) => Promise<boolean>
+  calculateRecommendationScore: (job: Job, lat?: number | null, lng?: number | null) => Promise<RecommendationScore>
+
+  getSkillBreakdown: (job: Job) => SkillMatchDetail[]
+
+  /** Dijkstra DistanceScore G(a,j) on its own, in the range [0,1]. */
+  calculateDistanceScore: (
+    job: Job,
+    lat?: number,
+    lng?: number
+  ) => Promise<number>
+
+  /** Composite MatchScore using the account's saved weights; default 70/30. */
+  calculateMatchScore: (
+    job: Job,
+    userLat?: number | null,
+    userLng?: number | null
+  ) => Promise<number>
+}
+
+const AppContext = createContext<AppState | null>(null)
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  const initialReset =
+    typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('reset')
+
+  const initialRoute =
+    typeof window === 'undefined'
+      ? { page: 'home' as Page, jobId: null }
+      : pathToRoute(window.location.pathname)
+
+  const [resetToken] = useState<string | null>(initialReset)
+  const [page, setPage] = useState<Page>(initialReset ? 'reset' : initialRoute.page)
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(initialRoute.jobId)
+  const [prevPage, setPrevPage] = useState<Page | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const [user, setUserState] = useState<User | null>(null)
+  const [employer, setEmployerState] = useState<Employer | null>(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [adminProfile, setAdminProfile] = useState<{ id: string; email: string; officeName: string } | null>(null)
+  const [preferences, setPreferences] = useState<RecommendationPreferences>(DEFAULT_PREFERENCES)
+  const [preferencesSaving, setPreferencesSaving] = useState(false)
+  const [preferencesError, setPreferencesError] = useState<string | null>(null)
+  const accountId = user?.id ?? employer?.id ?? adminProfile?.id ?? null
+  const userRef = useRef<User | null>(null)
+  const employerRef = useRef<Employer | null>(null)
+
+  const [savedJobIds, setSavedJobIds] = useState<string[]>([])
+  const [applications, setApplications] = useState<Application[]>([])
+  const [employerJobs, setEmployerJobs] = useState<EmployerJob[]>([])
+  const [allApplicants, setAllApplicants] = useState<ApplicantRecord[]>([])
+
+  const postedJobs: Job[] = []
+
+  const [allJobs, setAllJobs] = useState<Job[]>([])
+  const [jobsLoading, setJobsLoading] = useState(true)
+  const [jobsError, setJobsError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const [userLat, setUserLat] = useState<number | null>(null)
+  const [userLng, setUserLng] = useState<number | null>(null)
+  const [userInsideCity, setUserInsideCity] = useState<boolean | null>(null)
+  const [locMode, setLocMode] = useState<'gps' | 'pin'>('gps')
+
+  const matchLat = userInsideCity === true && userLat != null ? userLat : user?.lat ?? null
+  const matchLng = userInsideCity === true && userLng != null ? userLng : user?.lng ?? null
+
+  const loadJobs = useCallback(async (signal?: AbortSignal) => {
+    setJobsLoading(true)
+    setJobsError(null)
+    try {
+      setAllJobs(await api.fetchPublicJobs(signal))
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      setAllJobs([])
+      setJobsError(
+        error instanceof Error
+          ? error.message
+          : 'The job catalogue could not be loaded.'
+      )
+    } finally {
+      if (!signal?.aborted) setJobsLoading(false)
+    }
+  }, [])
+
+  const reloadJobs = useCallback(() => loadJobs(), [loadJobs])
+
+  useEffect(() => {
+    setPreferences(DEFAULT_PREFERENCES)
+    setPreferencesError(null)
+    if (!accountId) return
+    let cancelled = false
+    api.fetchPreferences()
+      .then(next => { if (!cancelled) setPreferences(next) })
+      .catch(() => { if (!cancelled) setPreferencesError('Your saved preferences could not be loaded, so the default 70/30 is used.') })
+    return () => { cancelled = true }
+  }, [accountId])
+
+  const savePreferences = async (updates: Partial<RecommendationPreferences>) => {
+    setPreferencesSaving(true)
+    setPreferencesError(null)
+    try {
+      setPreferences(await api.updatePreferences(updates))
+      return true
+    } catch (error) {
+      setPreferencesError(error instanceof Error ? error.message : 'Your preferences could not be saved.')
+      return false
+    } finally {
+      setPreferencesSaving(false)
+    }
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const url = new URL(window.location.href)
+    const before = url.search
+
+    if (initialReset) url.searchParams.delete('reset')
+
+    // Facebook, Google and newsletter tools append their own tracking
+    // parameters when a link is opened. They mean nothing to the app and
+    // turn a short address into an unreadable one.
+    for (const key of [...url.searchParams.keys()]) {
+      if (TRACKING_PARAMS.has(key) || key.startsWith('utm_')) {
+        url.searchParams.delete(key)
+      }
+    }
+
+    if (url.search !== before) {
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+    }
+  }, [initialReset])
+
+  useEffect(() => {
+    clearLegacyBrowserDataOnce()
+    const controller = new AbortController()
+    void loadJobs(controller.signal)
+    return () => controller.abort()
+  }, [loadJobs])
+
+  const loadSeekerData = useCallback(async (signal?: AbortSignal) => {
+    const [ids, apps] = await Promise.all([
+      api.fetchSavedJobIds(signal),
+      api.fetchMyApplications(signal),
+    ])
+    setSavedJobIds(ids)
+    setApplications(apps)
+  }, [])
+
+  const loadEmployerData = useCallback(async (signal?: AbortSignal) => {
+    const [jobs, applicants] = await Promise.all([
+      api.fetchEmployerJobs(signal),
+      api.fetchEmployerApplications({}, signal),
+    ])
+    setEmployerJobs(jobs.map(toEmployerJob))
+    setAllApplicants(applicants.map(toApplicantRecord))
+  }, [])
+
+  const refreshAccountData = useCallback(async () => {
+    try {
+      if (userRef.current) await loadSeekerData()
+      else if (employerRef.current) await loadEmployerData()
+    } catch {
+      // A failed refresh leaves the last known data on screen.
+    }
+  }, [loadSeekerData, loadEmployerData])
+
+  const adoptSession = useCallback(
+    async (session: api.SessionResponse | null, signal?: AbortSignal) => {
+      setIsAdmin(Boolean(session?.account?.isAdmin))
+
+      if (!session) {
+        setUserState(null)
+        setEmployerState(null)
+        setAdminProfile(null)
+        setSavedJobIds([])
+        setApplications([])
+        setEmployerJobs([])
+        setAllApplicants([])
+        return
+      }
+
+      if (session.account.role === 'admin') {
+        setAdminProfile({ id: session.account.id, email: session.account.email, officeName: session.profile.officeName })
+        setUserState(null)
+        setEmployerState(null)
+      } else if (session.account.role === 'job-seeker') {
+        setAdminProfile(null)
+        setUserState(toUser(session.profile))
+        setEmployerState(null)
+        await loadSeekerData(signal)
+      } else {
+        setAdminProfile(null)
+        setEmployerState(toEmployer(session.profile))
+        setUserState(null)
+        await loadEmployerData(signal)
+      }
+    },
+    [loadSeekerData, loadEmployerData]
+  )
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        await adoptSession(await api.fetchSession(controller.signal), controller.signal)
+      } catch {
+      } finally {
+        if (!controller.signal.aborted) setSessionLoading(false)
+      }
+    })()
+    return () => controller.abort()
+  }, [adoptSession])
+
+  const signIn = useCallback(
+    async (email: string, password: string, rememberMe = false, role?: 'job-seeker' | 'employer') => {
+      const session = await api.login(email, password, rememberMe, role)
+      await adoptSession(session)
+      return session.account.role
+    },
+    [adoptSession]
+  )
+
+  const signUp = useCallback(
+    async (input: api.SeekerRegistration | api.EmployerRegistration) => {
+      const session = await api.register(input)
+      await adoptSession(session)
+      return session.account.role
+    },
+    [adoptSession]
+  )
+
+  const signOut = useCallback(async () => {
+    try {
+      await api.logout()
+    } finally {
+      await adoptSession(null)
+    }
+  }, [adoptSession])
+
+  const setUser = (next: User | null) => {
+    if (next === null) void signOut()
+    else setUserState(next)
+  }
+
+  const setEmployer = (next: Employer | null) => {
+    if (next === null) void signOut()
+    else setEmployerState(next)
+  }
+
+  const runAction = async (action: () => Promise<void>): Promise<boolean> => {
+    try {
+      await action()
+      setActionError(null)
+      return true
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : 'That action could not be completed.'
+      )
+      return false
+    }
+  }
+
+  const toggleSave = (jobId: string) => {
+    if (!user) {
+      navigate('signin')
+      return Promise.resolve(false)
+    }
+
+    return runAction(async () => {
+      if (savedJobIds.includes(jobId)) {
+        await api.unsaveJob(jobId)
+        setSavedJobIds(prev => prev.filter(id => id !== jobId))
+      } else {
+        await api.saveJob(jobId)
+        setSavedJobIds(prev => [jobId, ...prev])
+      }
+    })
+  }
+
+  const submitApplication = async (
+    jobId: string,
+    input: api.ApplicationInput
+  ): Promise<Application> => {
+    const application = await api.applyToJob(jobId, input)
+    setApplications(prev => [application, ...prev])
+    return application
+  }
+
+  const addApplication = (application: Application) => {
+    setApplications(prev =>
+      prev.some(a => a.id === application.id) ? prev : [application, ...prev]
+    )
+  }
+
+  const addPostedJob = (_job: Job) => {
+    void reloadJobs()
+  }
+
+  const addEmployerJob = (job: EmployerJob) => {
+    setEmployerJobs(prev => [job, ...prev])
+  }
+
+  const updateEmployerJob = (id: string, updates: Partial<EmployerJob>) =>
+    runAction(async () => {
+      const job = await api.updateEmployerJob(id, updates as Record<string, unknown>)
+      setEmployerJobs(prev =>
+        prev.map(j =>
+          j.id === id ? { ...toEmployerJob(job), applicantCount: j.applicantCount } : j
+        )
+      )
+      if (updates.status) await reloadJobs()
+    })
+
+  const updateApplicantStatus = (id: string, status: ApplicantRecord['status']) =>
+    runAction(async () => {
+      await api.updateApplicationStatus(id, status)
+      setAllApplicants(prev => prev.map(a => (a.id === id ? { ...a, status } : a)))
+    })
+
+  const updateUser = (updates: Partial<User>) =>
+    runAction(async () => {
+      const profile = await api.updateProfile(updates)
+      setUserState(toUser(profile))
+    })
+
+  const updateEmployer = (updates: Partial<Employer>) =>
+    runAction(async () => {
+      const profile = await api.updateProfile(updates)
+      setEmployerState(toEmployer(profile))
+    })
+
+  const setUserLocation = (
+    lat: number,
+    lng: number,
+    inside: boolean,
+    mode: 'gps' | 'pin'
+  ) => {
+    setUserLat(lat)
+    setUserLng(lng)
+    setUserInsideCity(inside)
+    setLocMode(mode)
+  }
+
+  const clearUserLocation = () => {
+    setUserLat(null)
+    setUserLng(null)
+    setUserInsideCity(null)
+    setLocMode('gps')
+  }
+
+  useEffect(() => { userRef.current = user }, [user])
+  useEffect(() => { employerRef.current = employer }, [employer])
+
+  useEffect(() => {
+    const onFocus = () => { void refreshAccountData() }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refreshAccountData])
+
+  const LIVE_PAGES = new Set<Page>([
+    'applications', 'saved', 'employer-dashboard', 'employer-jobs', 'employer-applicants',
+  ])
+
+  function applyRoute(newPage: Page, jobId: string | null) {
+    setPrevPage(page)
+    setPage(newPage)
+    setSelectedJobId(jobId)
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onPopState = () => {
+      const route = pathToRoute(window.location.pathname)
+      setActionError(null)
+      setPrevPage(null)
+      setPage(route.page)
+      setSelectedJobId(route.jobId)
+      if (LIVE_PAGES.has(route.page)) void refreshAccountData()
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshAccountData])
+
+  function navigate(newPage: Page, jobId?: string | null) {
+    // An action error belongs to the page where it occurred, not the next route.
+    setActionError(null)
+    if (LIVE_PAGES.has(newPage)) void refreshAccountData()
+    // Reaching the post form without naming a job means composing a new one,
+    // never editing whichever job happened to be selected before.
+    if (newPage === 'employer-post' && jobId === undefined) jobId = null
+    const nextJobId = jobId !== undefined ? jobId ?? null : selectedJobId
+    applyRoute(newPage, nextJobId)
+
+    if (typeof window !== 'undefined') {
+      const path = routeToPath(newPage, nextJobId)
+      if (path !== window.location.pathname) {
+        window.history.pushState({}, '', path)
+      }
+      window.scrollTo(0, 0)
+    }
+  }
+
+  const calculateSkillMatchScore = useCallback((job: Job): number => {
+    if (!user) return 0
+    const required = job.requiredSkills?.length ? job.requiredSkills : job.skills ?? []
+    return skillMatchScore(required, user.skills)
+  }, [user])
+
+  const getSkillBreakdown = useCallback((job: Job): SkillMatchDetail[] => {
+    if (!user) return []
+    const required = job.requiredSkills?.length ? job.requiredSkills : job.skills ?? []
+    return explainSkillMatch(required, user.skills)
+  }, [user])
+
+  const calculateDistanceScore = useCallback(async (
+    job: Job,
+    lat: number | null | undefined = matchLat,
+    lng: number | null | undefined = matchLng
+  ): Promise<number> => {
+    if (lat == null || lng == null || !Number.isFinite(job.lat) || !Number.isFinite(job.lng)) return 0
+    return (await computeDijkstraDistance(lat, lng, job.lat, job.lng)).distanceScore
+  }, [matchLat, matchLng])
+
+  const calculateRecommendationScore = useCallback(async (
+    job: Job,
+    lat: number | null | undefined = matchLat,
+    lng: number | null | undefined = matchLng
+  ): Promise<RecommendationScore> => {
+    const skillWeightPercent = preferences.skillWeightPercent
+    const skillScore = calculateSkillMatchScore(job)
+    let distance: DistanceResult = { distanceScore: 0, accessibilityStatus: 'not-used', routeKm: null, snapKm: null, totalKm: null }
+    if (skillWeightPercent < 100) {
+      if (lat == null || lng == null) {
+        distance = { ...distance, accessibilityStatus: 'missing-location' }
+      } else if (job.lat == null || job.lng == null) {
+        distance = { ...distance, accessibilityStatus: 'missing-job-location' }
+      } else {
+        distance = await computeDijkstraDistance(lat, lng, job.lat, job.lng)
+      }
+    }
+    const total = user ? computeMatchScore(skillScore, distance.distanceScore, skillWeightPercent) : 0
+    return { skillScore, skillWeightPercent, total, ...distance }
+  }, [user, calculateSkillMatchScore, matchLat, matchLng, preferences.skillWeightPercent])
+
+  const calculateMatchScore = useCallback(async (job: Job, lat: number | null | undefined = matchLat, lng: number | null | undefined = matchLng) => {
+    if (!user) return 0
+    return (await calculateRecommendationScore(job, lat, lng)).total
+  }, [user, calculateRecommendationScore, matchLat, matchLng])
+
+  const hasApplied = (jobId: string) => applications.some(app => app.jobId === jobId)
+
+  const getApplicantCount = (jobId: string) => {
+    const job = employerJobs.find(j => j.id === jobId)
+    if (job) return job.applicantCount
+    return allApplicants.filter(a => a.jobId === jobId).length
+  }
+
+  const getApplicantsForJob = (jobId: string): ApplicantRecord[] =>
+    allApplicants
+      .filter(a => a.jobId === jobId)
+      .sort((a, b) => b.matchScore - a.matchScore)
+
+  return (
+    <AppContext.Provider
+      value={{
+        page,
+        selectedJobId,
+        prevPage,
+        user,
+        employer,
+        savedJobIds,
+        applications,
+        postedJobs,
+        employerJobs,
+        allApplicants,
+        searchQuery,
+        sessionLoading,
+        resetToken,
+        signIn,
+        signUp,
+        signOut,
+        userLat,
+        userLng,
+        userInsideCity,
+        matchLat,
+        matchLng,
+        locMode,
+        setUserLocation,
+        clearUserLocation,
+        navigate,
+        setUser,
+        setEmployer,
+        toggleSave,
+        submitApplication,
+        addApplication,
+        addPostedJob,
+        addEmployerJob,
+        updateEmployerJob,
+        updateApplicantStatus,
+        updateEmployer,
+        updateUser,
+        setSearchQuery,
+        allJobs,
+        jobsLoading,
+        jobsError,
+        actionError,
+        dismissActionError: () => setActionError(null),
+        reloadJobs,
+        calculateSkillMatchScore,
+        isAdmin,
+        adminProfile,
+        refreshAccountData,
+        preferences,
+        preferencesSaving,
+        preferencesError,
+        savePreferences,
+        calculateRecommendationScore,
+        calculateDistanceScore,
+        getSkillBreakdown,
+        calculateMatchScore,
+        hasApplied,
+        getApplicantCount,
+        getApplicantsForJob,
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  )
+}
+
+export function useApp() {
+  const ctx = useContext(AppContext)
+  if (!ctx) throw new Error('useApp must be used within AppProvider')
+  return ctx
+}

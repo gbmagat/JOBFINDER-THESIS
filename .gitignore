@@ -1,123 +1,33 @@
-# Dependencies
 node_modules/
-frontend/node_modules/
-backend/node_modules/
-
-# Build and test outputs
-frontend/dist/
-frontend/.vite/
-frontend/coverage/
-frontend/*.tsbuildinfo
-
-# Runtime databases, uploads, and backups
-*.db
-*.db-shm
-*.db-wal
-*.db-journal
+dist/
+build/
+.cache/
+.env*
+!.env.example
+.vite/
+vite.config.*.timestamp-*
+*.tsbuildinfo
+*-debug.log*
+logs/
+*.log
+.claude-replay.*
+.tmp-*
+server/data/
+server/uploads/
+server/.env
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-*.sqlite-journal
-*.sqlite3
-*.sqlite3-shm
-*.sqlite3-wal
-*.sqlite3-journal
-/uploads/
-/backups/
-/backend/uploads/
-/backend/backups/
-*.bak
-*.backup
-*.dump
-*.dump.gz
-*.sql.gz
 
-# Local QA browser profile and cache
-frontend/.qa/
+# AI assistant working files — never publish these to GitHub
+.claude/
+.claude-replay.*
+.codex/
+.codex-tmp/
+.aider*
+.cursor/
+CLAUDE.md
+AGENTS.md
 
-# Local Codex and QA data
-/.codex-migration/
-/.codex-openai-docs-cache/
-/.codex-temp-reference-sites/
-/.visual-qa/
-/frontend/.qa-final/
-/frontend/.npm-cache/
-
-# Environment files
-.env
-.env.*
-*.env
-!.env.example
-!.env.*.example
-
-# Private keys and credential exports
-*.pem
-*.key
-*.p12
-*.pfx
-*.p8
-*.ppk
-*.pkcs8
-*.der
-*.crt
-*.cer
-*.jks
-*.keystore
-*.kdbx
-id_rsa*
-id_ed25519*
-id_dsa*
-id_ecdsa*
-credentials.json
-credentials-*.json
-credentials_*.json
-*-credentials.json
-*_credentials.json
-credentials.csv
-credentials-*.csv
-credentials_*.csv
-*-credentials.csv
-*_credentials.csv
-client_secret*.json
-client-secret*.json
-service-account.json
-service-account-*.json
-service-account_*.json
-*-service-account.json
-*_service-account.json
-service_account.json
-service_account-*.json
-service_account_*.json
-*-service_account.json
-*_service_account.json
-*firebase-adminsdk*.json
-secret.json
-secret-*.json
-secret_*.json
-*-secret.json
-*_secret.json
-secrets.json
-secrets-*.json
-secrets_*.json
-*-secrets.json
-*_secrets.json
-.npmrc
-.netrc
-.pypirc
-.secrets/
-
-# Logs
-*.log
-
-# Operating system files
-.DS_Store
-Thumbs.db
-
-# Private project plans
-JOBFINDER_FIGMA_HIGH_FIDELITY_PLAN.md
-JOBFINDER_FRONTEND_BLUEPRINT.md
-
-# Private thesis working files
-/ONTOLOGY_BASED_OPPORTUNITY_RECOMMENDATION*.docx
-/create_jobfinder_google_forms.gs
-~$*.docx
+# Server deployment scripts reference private host paths - keep local only
+deploy/

@@ -1,0 +1,11 @@
+{
+  "title": "JobFinder",
+  "description": "Find local job opportunities in Angeles City and connect with employers.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

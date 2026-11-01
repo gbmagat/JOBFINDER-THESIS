@@ -1,97 +1,131 @@
-# JobFinder - Version 4.7 Public Development Demo Accounts
+# JobFinder
 
-JobFinder is a responsive React, Express, and SQLite thesis prototype for explainable skill and geographic job matching. Guests can browse jobs without match percentages. Personalized scores appear only after a signed-in Job Seeker completes the required profile details and skills.
+Ontology-Based Skill and Geographic Accessibility Matching for Opportunity Recommendation
 
-The frontend and backend are connected. Employer-created jobs, accounts, profiles, applications, uploaded PDF resumes, sessions, employer verification, job-post decisions, and the immutable review log persist in SQLite and protected storage. The real PESO/LGU dataset is still pending and is not replaced with invented production data.
+JobFinder is a research prototype for job opportunities in Angeles City, Pampanga.
+It combines ontology-based skill matching with Dijkstra shortest-path computation
+on a road-network graph to rank job recommendations. It includes job-seeker,
+employer, and PESO administrator functions.
 
-Version 3.9 prevents local environment files, databases, uploads, and backups from entering the Docker build context or runtime image.
+## Project links
 
-Version 4.0 reduces accidental-publication risk by ignoring common private thesis files and sensitive runtime artifacts, then checking that sensitive paths are not already tracked by Git.
+- [Live website](https://jobfinderangeles.site)
+- [Docker image](https://hub.docker.com/r/gabmagat/jobfinder)
+- [Source code](https://github.com/aizukiontop/Jobfinder)
+- [Detailed Docker installation and evaluation guide](DOCKER.md)
 
-Version 4.1 adds the restricted PESO/LGU reviewer workspace, employer and job-post verification, subdomain-aware access, an immutable Audit Log, and lifecycle protection that withdraws approved jobs when an employer loses verification.
+## Run with Docker (recommended for evaluators)
 
-Version 4.4 replaces raw response-parsing failures with clear server-connection guidance and documents the complete fresh-clone startup procedure.
+Install and start Docker Engine or Docker Desktop with Linux containers enabled.
+The published image targets Linux AMD64 (x86-64). Node.js and Git are not required
+for this option.
 
-Version 4.5 makes local setup safe to rerun on Windows without deleting the entire dependency folder first.
-
-Version 4.6 lets the shared sign-in page recognize Job Seeker and Employer accounts, sends each account to the correct workspace, and keeps the dedicated PESO/LGU sign-in and Job-Seeker-only application flow protected.
-
-Version 4.7 seeds clearly labeled development-only demo accounts in local and Codespaces development. Production still rejects demo seeding and does not contain built-in demo credentials.
-
-## Mapping prototype
-
-JobFinder displays OpenStreetMap tiles with required attribution, while the
-backend calculates route distance and geometry with JobFinder's own Dijkstra
-implementation. Leaflet only draws the returned GeoJSON line; it does not
-calculate the route.
-
-The current thesis seed contains a small four-node Angeles City demonstration
-graph. Its lines are graph previews, not turn-by-turn navigation. Importing a
-larger road graph, preserving road-edge geometry, and snapping a user's live
-position to the nearest supported node are separate dataset steps.
-
-For local testing, the frontend defaults to OpenStreetMap's public tile server.
-Before a public production launch, configure `VITE_MAP_TILE_URL` at frontend
-build time for a tile provider whose capacity and terms fit the deployment.
-Do not bulk-download or offline-cache public OpenStreetMap tiles.
-
-## Run locally
-
-Use Node.js 22 or newer. From the repository root, install all three package
-groups and start the frontend and backend together:
-
-```powershell
-npm run setup
-npm run dev
+```sh
+docker pull gabmagat/jobfinder:latest
+docker run -d --name jobfinder --cap-drop ALL --security-opt no-new-privileges:true -p 127.0.0.1:8080:8080 -v jobfinder-data:/data gabmagat/jobfinder:latest
 ```
 
-Run `npm run setup` once after downloading the project or whenever dependencies
-change. Stop any running JobFinder command with `Ctrl+C` before updating
-dependencies. For normal use after setup, only `npm run dev` is required.
+Open **http://localhost:8080**. Use this exact hostname for the configured origin.
 
-If Windows reports `EPERM` for a native `.node` file, close the running
-JobFinder terminal and rerun `npm run setup`. Do not delete `node_modules` while
-the development server is running.
+On first start with a new data volume, the application creates a fresh database
+containing the study's job-posting dataset. Register a new job-seeker or employer
+account; live-website accounts are not included. There is no default administrator
+password. See [DOCKER.md](DOCKER.md) for administrator creation, Compose commands,
+and further setup instructions.
 
-The terminal should show the backend on `http://127.0.0.1:4000` and the
-frontend Vite address. Do not start only `frontend`, because account actions
-need the backend API. VS Code Live Server, opening `frontend/dist` directly,
-and GitHub Pages are not supported for sign-in because they do not run the
-Express API.
+Accounts and uploads persist in the `jobfinder-data` volume. Do not delete this
+volume unless you intend to delete that local data. Email delivery is disabled by
+default, including password-reset emails. Map tiles and external links may require
+internet access. This local package is separate from the live website.
 
-Development started through `npm run dev` automatically seeds these thesis demo
-accounts:
+### Reproducible submission version
 
-- Employer: `employer@demo.com`
-- Job Seeker: `jobfinder@demo.com`
-- Password for both accounts: `12345678`
+The first published submission image was built from source commit
+`db7a8ab2ecafbe49226674adca118d01d2a5de93` and passed the
+[publishing workflow's container checks](https://github.com/aizukiontop/Jobfinder/actions/runs/38657853643).
+These covered startup, authentication, uploads, and persistence after container
+replacement. The `latest` tag may change; use this digest to retrieve that exact image:
 
-These are public development fixtures, not production credentials. The
-PESO/LGU reviewer remains privately configured. A local, ignored
-`backend/.env` can override all demo values. Production requires
-`JOBFINDER_SEED_DEMO=false` and never falls back to the public accounts.
-
-If the interface opens but sign-in cannot reach the server, confirm that
-`http://127.0.0.1:4000/api/health` returns JSON, then stop the running commands
-and start the project again from the repository root with `npm run dev`.
-
-## Verify the release
-
-```powershell
-npm run release:check
+```sh
+docker pull gabmagat/jobfinder@sha256:37b53eeb387d2dc134b25c86dbd4eb8f7e72054b67b98fb5ee798ccf503e030f
 ```
 
-This runs frontend/backend checks and unit tests, builds the production frontend, completes the critical browser journeys, and starts the real production server against temporary storage for a final smoke test.
+## Run from source (developers)
 
-## Production operations
+Requirements: Node.js 24 (the version used by the Docker workflow), npm, Git, and
+Git LFS for tracked binary assets. Use npm with the committed `package-lock.json`;
+there is no need to install dependencies again with pnpm. SQLite is embedded and
+does not need a separate database server.
+
+```sh
+git lfs install
+git clone https://github.com/aizukiontop/Jobfinder.git
+cd Jobfinder
+git lfs pull
+npm ci
+```
+
+Run the backend and frontend in **two terminals**, both opened in the cloned
+`Jobfinder` folder. The examples below use **Windows PowerShell**. On other shells,
+set the same environment variables using that shell's syntax. On Windows, use
+`npm.cmd` if PowerShell blocks `npm.ps1`.
+
+### Terminal 1: backend API
 
 ```powershell
+$env:NODE_ENV = 'development'
+$env:JOBFINDER_HOST = '127.0.0.1'
+$env:JOBFINDER_PORT = '3210'
+$env:JOBFINDER_APP_ORIGIN = 'http://127.0.0.1:8443'
+$env:JOBFINDER_SEED_ON_START = '1'
+$env:JOBFINDER_MAIL_PROVIDER = 'none'
+$env:JOBFINDER_NOTIFICATIONS_ENABLED = '0'
+npm.cmd run dev:api
+```
+
+The API initializes the schema and seeds the study postings. With no database or
+upload-path overrides, local data is stored in `server/data/jobfinder.sqlite` and
+`server/uploads/`. Use a fresh development checkout, not a production data directory.
+
+### Terminal 2: frontend
+
+```powershell
+$env:JOBFINDER_BASE = '/'
+$env:PORT = '8443'
+npm.cmd run dev -- --host 127.0.0.1
+```
+
+Open **http://127.0.0.1:8443**. Vite proxies `/api` requests to the backend at
+`127.0.0.1:3210`. Keep both terminals running. Starting only the frontend does not
+start the API or provide working account and database features. If you change the
+frontend address, update `JOBFINDER_APP_ORIGIN` to match it and restart the API.
+
+## Checks and build
+
+From the project folder:
+
+```sh
+npm run typecheck
+npm test
+node --test docker/runtime-config.test.mjs
 npm run build
-npm start
-npm run backup
-npm run verify:backup
 ```
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for environment, persistent storage, backup, restore, provisioning, and rollback instructions. Use [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before a controlled thesis evaluation.
+The build produces frontend files in `dist/`; it does not start or package the API.
+The default build base is `/Jobfinder/`. Set `JOBFINDER_BASE=/` before building for
+a domain-root deployment, as the Docker build does. The optional VPS service-file
+test is skipped in a clean clone because private deployment configuration is not
+included; runtime networking tests still run.
 
-Earlier milestones remain available through their Git history and release tags, including `v2.0-frontend`, `v3.2-backend-update`, and `v3.5-distance-only-matching`.
+## Data and evaluation scope
+
+The repository contains the study's job-posting, skill-ontology, and geographic
+assets, not the live site's accounts, resumes, credentials, or production database.
+Recruitment records are study data and are not a guarantee of current vacancies.
+Computational agreement tests check the implemented algorithms on tested cases;
+they do not establish every skill relationship's semantic correctness or actual
+travel conditions. Questionnaire ratings describe participant perceptions separately.
+
+Road-network data are derived from [OpenStreetMap](https://www.openstreetmap.org/copyright)
+and are subject to the Open Database License. Preserve the applicable data attribution.
+Never commit private environment files, API tokens, database copies, or personal uploads.

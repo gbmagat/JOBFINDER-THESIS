@@ -1,0 +1,1028 @@
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useApp } from '../context'
+import { getExternalApplicationUrl } from '../lib/applicationLinks'
+import { createJobSearch } from '../lib/jobSearch'
+import { BARANGAY_NAMES } from '../data/barangays'
+import MapView from '../components/MapView'
+import WeightSlider from '../components/WeightSlider'
+import type { Job } from '../types'
+import type { SkillMatchDetail } from '../lib/ontology'
+
+function BookmarkIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill={filled ? '#16a34a' : 'none'} stroke={filled ? '#16a34a' : '#9ca3af'} strokeWidth="2">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  )
+}
+
+function BuildingIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </svg>
+  )
+}
+
+function FilterIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </svg>
+  )
+}
+
+function MapIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+      <line x1="8" y1="2" x2="8" y2="18" />
+      <line x1="16" y1="6" x2="16" y2="22" />
+    </svg>
+  )
+}
+
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  )
+}
+
+function LocationIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  )
+}
+
+const DATE_OPTIONS = ['Any time', 'Past 24 hours', 'Past week', 'Past month']
+
+const EMPLOYMENT_FILTERS = [
+  { label: 'Full-time', values: ['Full-time'] },
+  { label: 'Part-time', values: ['Part-time'] },
+  { label: 'Contract/Temporary', values: ['Contract', 'Temporary'] },
+]
+
+const EXPERIENCE_FILTERS = [
+  { label: 'Entry level', values: ['Entry level', 'Associate'] },
+  { label: 'Mid-level', values: ['Mid-Senior level'] },
+  { label: 'Senior level', values: ['Director', 'Executive'] },
+]
+
+export default function Search() {
+  const { allJobs, navigate, toggleSave, savedJobIds, searchQuery, setSearchQuery,
+          calculateMatchScore, user, getSkillBreakdown, matchLat, matchLng, preferences } = useApp()
+  const [localQuery, setLocalQuery] = useState(searchQuery)
+  const [dateFilter, setDateFilter] = useState('Any time')
+  const [empTypes, setEmpTypes] = useState<string[]>([])
+  const [expLevels, setExpLevels] = useState<string[]>([])
+  const [barangayFilter, setBarangayFilter] = useState<string>('All Angeles City')
+  const [showMap, setShowMap] = useState(true)
+  const [mapExpanded, setMapExpanded] = useState(false)
+  const [showMobileFilters, setShowMobileFilters] = useState(false)
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const PER_PAGE = 8
+
+  // User geolocation
+  // ── Location state — persisted in AppContext so it survives navigation ───────
+  const {
+    userLat, userLng, userInsideCity, locMode,
+    setUserLocation, clearUserLocation,
+  } = useApp()
+  const [locLoading, setLocLoading] = useState(false)
+  const [pinMode, setPinMode] = useState(false)   // transient UI only — resets on unmount intentionally
+
+  // Dijkstra-based match scores keyed by job.id — computed asynchronously
+  // so each card re-renders as its Dijkstra result arrives.
+  const [matchScores, setMatchScores] = useState<Record<string, number>>({})
+  const [scoresLoading, setScoresLoading] = useState(false)
+
+  useEffect(() => { setLocalQuery(searchQuery) }, [searchQuery])
+
+  useEffect(() => { setCurrentPage(1) }, [localQuery, dateFilter, empTypes, expLevels, barangayFilter])
+
+  const jobSearch = useMemo(() => createJobSearch(localQuery), [localQuery])
+
+  // Shared: apply any lat/lng as the user location (GPS or manual pin)
+  const applyLocation = useCallback((lat: number, lng: number, mode: 'gps' | 'pin') => {
+    import('../lib/geo').then(({ isWithinAngelesCity }) => {
+      setUserLocation(lat, lng, isWithinAngelesCity(lat, lng), mode)
+    })
+  }, [setUserLocation])
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) return
+    setLocLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        applyLocation(pos.coords.latitude, pos.coords.longitude, 'gps')
+        setLocLoading(false)
+        setPinMode(false)
+      },
+      () => setLocLoading(false),
+      { timeout: 10000 }
+    )
+  }
+
+  // Called when user clicks the map in pin mode
+  const handleMapClick = useCallback((lat: number, lng: number) => {
+    if (!pinMode) return
+    applyLocation(lat, lng, 'pin')
+    setPinMode(false) // exit pin-placement mode after first click
+  }, [pinMode, applyLocation])
+
+  // Step 1: Filter jobs (synchronous)
+  const filtered = useMemo(() => {
+    let jobs = [...allJobs]
+
+    // All jobs in allJobs are Angeles City (hard-blocked at import)
+    jobs = jobs.filter(jobSearch.matches)
+
+    // Barangay filter
+    if (barangayFilter !== 'All Angeles City') {
+      jobs = jobs.filter(j =>
+        j.barangay?.toLowerCase() === barangayFilter.toLowerCase()
+      )
+    }
+
+    if (dateFilter !== 'Any time') {
+      const limit =
+        dateFilter === 'Past 24 hours' ? 1
+        : dateFilter === 'Past week' ? 7
+        : 30
+      jobs = jobs.filter(j => j.daysAgo <= limit)
+    }
+    if (empTypes.length > 0) {
+  jobs = jobs.filter(j =>
+    empTypes.some(type =>
+      EMPLOYMENT_FILTERS.find(filter => filter.label === type)?.values.includes(j.employmentType)
+        )
+      )
+    }
+    if (expLevels.length > 0) {
+  jobs = jobs.filter(j =>
+    expLevels.some(level =>
+      EXPERIENCE_FILTERS.find(filter => filter.label === level)?.values.includes(j.experienceLevel)
+        )
+      )
+    }
+    return jobs
+  }, [allJobs, jobSearch, barangayFilter, dateFilter, empTypes, expLevels])
+
+  // Step 2: Compute Dijkstra-based MatchScores asynchronously whenever
+  // the filtered set, user, or location changes. Jobs render immediately
+  // (no score shown yet), then re-render as each score arrives.
+  useEffect(() => {
+    if (!user) { setMatchScores({}); return }
+
+    let cancelled = false
+    setScoresLoading(true)
+    const next: Record<string, number> = {}
+
+    // Compute all scores concurrently — Dijkstra runs in the browser so
+    // Promise.all just queues microtasks; road graph is cached after first load.
+    Promise.all(
+      filtered.map(async job => {
+        next[job.id] = await calculateMatchScore(job)
+      })
+    ).then(() => {
+      if (cancelled) return
+      setMatchScores(next)
+      setScoresLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [filtered, user, calculateMatchScore])
+
+  // Step 3: Sort filtered jobs by MatchScore descending (thesis core output).
+  // When no user is logged in, preserve dataset order.
+  const sorted = useMemo(() => {
+    if (!user || Object.keys(matchScores).length === 0) return filtered
+    return [...filtered].sort(
+      (a, b) => (matchScores[b.id] ?? 0) - (matchScores[a.id] ?? 0)
+    )
+  }, [filtered, matchScores, user])
+
+  const totalPages = Math.ceil(sorted.length / PER_PAGE)
+  const paginated = sorted.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE)
+  const selectedJob = sorted.find(j => j.id === selectedJobId) ?? null
+  const selectedApplicationUrl = selectedJob ? getExternalApplicationUrl(selectedJob) : null
+
+  const toggleEmpType = (t: string) =>
+    setEmpTypes(prev => (prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]))
+  const toggleExpLevel = (l: string) =>
+    setExpLevels(prev => (prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l]))
+  const handleSearch = () => { setSearchQuery(localQuery); setCurrentPage(1) }
+
+  // Count of active filters for the mobile badge
+  const activeFilterCount =
+    (barangayFilter !== 'All Angeles City' ? 1 : 0) +
+    (dateFilter !== 'Any time' ? 1 : 0) +
+    empTypes.length +
+    expLevels.length
+
+  return (
+    <div style={{ background: '#f9fafb', minHeight: '100vh' }}>
+      {/* Search bar */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb' }} className="px-4 py-3">
+        {userInsideCity === false && (
+        <div style={{ background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '8px 16px' }}>
+          <div className="max-w-7xl mx-auto flex items-center gap-2" style={{ fontSize: 13, color: '#92400e' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" style={{ flexShrink: 0 }}>
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span>
+              <strong>Your location is outside Angeles City.</strong> Distance-based matching is unavailable, but you can still browse and apply for Angeles City jobs.
+            </span>
+          </div>
+        </div>
+      )}
+      {pinMode && (
+        <div style={{ background: '#f5f3ff', borderBottom: '1px solid #ddd6fe', padding: '8px 16px' }}>
+          <div className="max-w-7xl mx-auto flex items-center gap-2" style={{ fontSize: 13, color: '#5b21b6' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" style={{ flexShrink: 0 }}>
+              <line x1="12" y1="17" x2="12" y2="22"/><path d="M12 17C8.686 17 6 14.314 6 11A6 6 0 0 1 18 11c0 3.314-2.686 6-6 6z"/>
+              <circle cx="12" cy="11" r="2"/>
+            </svg>
+            <span>
+              <strong>Click anywhere on the map</strong> to place your location pin. The pin will be used for route calculation.
+            </span>
+          </div>
+        </div>
+      )}
+      <div className="max-w-7xl mx-auto flex flex-wrap gap-2 items-center">
+          <div style={{ border: '1px solid #d1d5db', borderRadius: 6 }} className="flex items-center px-3 gap-2 flex-1 min-w-48">
+            <span className="text-gray-400"><SearchIcon /></span>
+            <input
+              value={localQuery}
+              onChange={e => setLocalQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Job title, skills, or company"
+              className="flex-1 py-2 text-sm outline-none text-gray-800 placeholder-gray-400"
+            />
+          </div>
+          <button
+            onClick={handleSearch}
+            style={{ background: '#16a34a', color: '#fff', borderRadius: 6 }}
+            className="px-5 py-2 text-sm font-semibold hover:bg-green-700 transition-colors"
+          >
+            Find
+          </button>
+          {/* ── Location: GPS + Pin two-button group ── */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            {/* Mobile Filters button — hidden on desktop where sidebar is visible */}
+            <button
+              onClick={() => setShowMobileFilters(true)}
+              style={{
+                border: `1px solid ${activeFilterCount > 0 ? '#0f2044' : '#d1d5db'}`,
+                borderRadius: 6,
+                color: activeFilterCount > 0 ? '#0f2044' : '#374151',
+                background: activeFilterCount > 0 ? '#f0f4ff' : '#fff',
+              }}
+              className="md:hidden px-3 py-2 text-sm font-medium flex items-center gap-1 hover:bg-gray-50"
+            >
+              <FilterIcon />
+              Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+            </button>
+            {/* Option A — GPS */}
+            <button
+              onClick={() => { setPinMode(false); requestLocation() }}
+              disabled={locLoading}
+              title="Use browser GPS location"
+              style={{
+                border: `1px solid ${locMode === 'gps' && userInsideCity === true ? '#16a34a' : locMode === 'gps' && userInsideCity === false ? '#f59e0b' : '#d1d5db'}`,
+                borderRadius: 6,
+                color: locMode === 'gps' && userInsideCity === true ? '#16a34a' : locMode === 'gps' && userInsideCity === false ? '#92400e' : '#374151',
+                background: locMode === 'gps' && userInsideCity === true ? '#f0fdf4' : locMode === 'gps' && userInsideCity === false ? '#fef3c7' : '#fff',
+              }}
+              className="px-3 py-2 text-sm font-medium flex items-center gap-1 hover:bg-gray-50"
+            >
+              <LocationIcon />
+              {locLoading ? 'Locating…' : locMode === 'gps' && userInsideCity === true ? 'GPS ✓' : locMode === 'gps' && userInsideCity === false ? 'Outside' : 'GPS'}
+            </button>
+
+            {/* Option B — Manual pin */}
+            <button
+              onClick={() => {
+                setPinMode(v => !v)
+                if (!showMap) { /* open map automatically so user can click */ }
+              }}
+              title={pinMode ? 'Click anywhere on the map to place your pin' : 'Manually pin your location on the map'}
+              style={{
+                border: `1px solid ${pinMode ? '#7c3aed' : locMode === 'pin' && userInsideCity === true ? '#16a34a' : locMode === 'pin' && userInsideCity === false ? '#f59e0b' : '#d1d5db'}`,
+                borderRadius: 6,
+                color: pinMode ? '#7c3aed' : locMode === 'pin' && userInsideCity === true ? '#16a34a' : locMode === 'pin' && userInsideCity === false ? '#92400e' : '#374151',
+                background: pinMode ? '#f5f3ff' : locMode === 'pin' && userInsideCity === true ? '#f0fdf4' : locMode === 'pin' && userInsideCity === false ? '#fef3c7' : '#fff',
+              }}
+              className="px-3 py-2 text-sm font-medium flex items-center gap-1 hover:bg-gray-50"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="17" x2="12" y2="22"/><path d="M12 17C8.686 17 6 14.314 6 11A6 6 0 0 1 18 11c0 3.314-2.686 6-6 6z"/>
+                <circle cx="12" cy="11" r="2"/>
+              </svg>
+              {pinMode ? 'Click map…' : locMode === 'pin' && userInsideCity === true ? 'Pin ✓' : locMode === 'pin' && userInsideCity === false ? 'Outside' : 'Pin'}
+            </button>
+          </div>
+          <button
+            onClick={() => setShowMap(v => !v)}
+            style={{
+              border: `1px solid ${showMap ? '#16a34a' : '#d1d5db'}`,
+              borderRadius: 6,
+              color: showMap ? '#16a34a' : '#374151',
+              background: showMap ? '#f0fdf4' : '#fff',
+            }}
+            className="px-4 py-2 text-sm font-medium flex items-center gap-2 hover:bg-gray-50"
+          >
+            <MapIcon /> Map
+          </button>
+        </div>
+      </div>
+
+      {/* ── Mobile Filter Drawer — only renders on mobile, only when open ── */}
+      {showMobileFilters && (
+        <div className="md:hidden">
+          {/* Backdrop */}
+          <div
+            onClick={() => setShowMobileFilters(false)}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+              zIndex: 1000,
+            }}
+          />
+          {/* Drawer panel — slides up from bottom */}
+          <div
+            style={{
+              position: 'fixed', bottom: 0, left: 0, right: 0,
+              background: '#fff',
+              borderRadius: '16px 16px 0 0',
+              zIndex: 1001,
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              boxShadow: '0 -4px 24px rgba(0,0,0,0.15)',
+            }}
+          >
+            {/* Drawer header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '16px 20px 12px',
+              borderBottom: '1px solid #e5e7eb',
+              position: 'sticky', top: 0, background: '#fff', zIndex: 1,
+            }}>
+              <span style={{ fontWeight: 700, fontSize: 16, color: '#111827' }}>
+                Filters {activeFilterCount > 0 && (
+                  <span style={{
+                    background: '#0f2044', color: '#fff',
+                    borderRadius: 999, fontSize: 11,
+                    padding: '1px 7px', marginLeft: 6,
+                  }}>
+                    {activeFilterCount}
+                  </span>
+                )}
+              </span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {activeFilterCount > 0 && (
+                  <button
+                    onClick={() => {
+                      setBarangayFilter('All Angeles City')
+                      setDateFilter('Any time')
+                      setEmpTypes([])
+                      setExpLevels([])
+                      setCurrentPage(1)
+                    }}
+                    style={{ fontSize: 13, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    Clear all
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowMobileFilters(false)}
+                  style={{
+                    background: '#f3f4f6', border: 'none', borderRadius: 999,
+                    width: 32, height: 32, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 18, color: '#374151',
+                  }}
+                  aria-label="Close filters"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* Filter controls — identical to desktop sidebar */}
+            <div style={{ padding: '16px 20px 32px' }}>
+
+              {/* Barangay */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: '#111827', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <LocationIcon /> Barangay
+                </div>
+                <select
+                  value={barangayFilter}
+                  onChange={e => { setBarangayFilter(e.target.value); setCurrentPage(1) }}
+                  style={{
+                    border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14,
+                    width: '100%', padding: '8px 10px', background: '#fff', color: '#374151',
+                  }}
+                >
+                  <option value="All Angeles City">All Angeles City</option>
+                  {BARANGAY_NAMES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+
+              {/* Date Posted */}
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16, marginBottom: 20 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: '#111827', marginBottom: 10 }}>Date Posted</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {DATE_OPTIONS.map(opt => (
+                    <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="mobile-date"
+                        checked={dateFilter === opt}
+                        onChange={() => { setDateFilter(opt); setCurrentPage(1) }}
+                        style={{ accentColor: '#16a34a', width: 16, height: 16 }}
+                      />
+                      <span style={{ fontSize: 14, color: '#374151' }}>{opt}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Employment Type */}
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16, marginBottom: 20 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: '#111827', marginBottom: 10 }}>Employment Type</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {EMPLOYMENT_FILTERS.map(filter => (
+                    <label key={filter.label} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={empTypes.includes(filter.label)}
+                        onChange={() => { toggleEmpType(filter.label); setCurrentPage(1) }}
+                        style={{ accentColor: '#16a34a', width: 16, height: 16 }}
+                      />
+                      <span style={{ fontSize: 14, color: '#374151' }}>{filter.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Experience Level */}
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: '#111827', marginBottom: 10 }}>Experience Level</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {EXPERIENCE_FILTERS.map(filter => (
+                    <label key={filter.label} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={expLevels.includes(filter.label)}
+                        onChange={() => { toggleExpLevel(filter.label); setCurrentPage(1) }}
+                        style={{ accentColor: '#16a34a', width: 16, height: 16 }}
+                      />
+                      <span style={{ fontSize: 14, color: '#374151' }}>{filter.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Apply button */}
+              <button
+                onClick={() => setShowMobileFilters(false)}
+                style={{
+                  marginTop: 24, width: '100%',
+                  background: '#0f2044', color: '#fff',
+                  border: 'none', borderRadius: 8,
+                  padding: '14px', fontSize: 15, fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Show {sorted.length} result{sorted.length !== 1 ? 's' : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col lg:flex-row gap-4">
+        {/* Filters sidebar */}
+        <aside
+          style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+          className="w-52 flex-shrink-0 p-4 self-start hidden md:block"
+        >
+          {/* Barangay filter */}
+          <div className="mb-5">
+            <div className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-1">
+              <LocationIcon />
+              <span>Barangay</span>
+            </div>
+            <select
+              value={barangayFilter}
+              onChange={e => { setBarangayFilter(e.target.value); setCurrentPage(1) }}
+              style={{ border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
+              className="w-full px-2 py-1.5 outline-none text-gray-700 bg-white"
+            >
+              <option value="All Angeles City">All Angeles City</option>
+              {BARANGAY_NAMES.map(b => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Posted */}
+          <div style={{ borderTop: '1px solid #e5e7eb' }} className="pt-4 mb-5">
+            <div className="text-sm font-semibold text-gray-800 mb-3">Date Posted</div>
+            <div className="space-y-2">
+              {DATE_OPTIONS.map(opt => (
+                <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="date"
+                    checked={dateFilter === opt}
+                    onChange={() => { setDateFilter(opt); setCurrentPage(1) }}
+                    style={{ accentColor: '#16a34a' }}
+                  />
+                  <span className="text-sm text-gray-600">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid #e5e7eb' }} className="pt-4 mb-5">
+            <div className="text-sm font-semibold text-gray-800 mb-3">Employment Type</div>
+            <div className="space-y-2">
+              {EMPLOYMENT_FILTERS.map(filter => (
+                <label key={filter.label} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={empTypes.includes(filter.label)}
+                    onChange={() => { toggleEmpType(filter.label); setCurrentPage(1) }}
+                    style={{ accentColor: '#16a34a' }}
+                  />
+                  <span className="text-sm text-gray-600">{filter.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+            <div style={{ borderTop: '1px solid #e5e7eb' }} className="pt-4">
+              <div className="text-sm font-semibold text-gray-800 mb-3">Experience Level</div>
+              <div className="space-y-2">
+                {EXPERIENCE_FILTERS.map(filter => (
+                  <label key={filter.label} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={expLevels.includes(filter.label)}
+                      onChange={() => { toggleExpLevel(filter.label); setCurrentPage(1) }}
+                      style={{ accentColor: '#16a34a' }}
+                    />
+                    <span className="text-sm text-gray-600">{filter.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+        </aside>
+
+        {/* Results */}
+        <div className="flex-1 min-w-0">
+          {user && (
+            <details
+              style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+              className="p-3 mb-3"
+            >
+              <summary className="text-sm text-gray-700 cursor-pointer">
+                Ranking: skill match {preferences.skillWeightPercent}% · distance {100 - preferences.skillWeightPercent}% (change)
+              </summary>
+              <div className="pt-3">
+                <WeightSlider />
+              </div>
+            </details>
+          )}
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-base text-gray-800">
+              {barangayFilter !== 'All Angeles City'
+                ? `Jobs in ${barangayFilter}`
+                : localQuery ? `${localQuery} Jobs in Angeles City` : 'All Jobs — Angeles City'}
+            </h2>
+            <div className="flex items-center gap-2">
+              {scoresLoading && user && (
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>Calculating matches…</span>
+              )}
+              <span className="text-sm text-gray-500">{sorted.length.toLocaleString()} results</span>
+            </div>
+          </div>
+
+          {jobSearch.skillLabel && (
+            <p className="text-xs text-gray-500 mb-3">
+              Includes keyword matches and required skills related to {jobSearch.skillLabel}.
+            </p>
+          )}
+
+          <div className="space-y-2">
+            {paginated.map(job => (
+              <SearchJobRow
+                key={job.id}
+                job={job}
+                selected={selectedJobId === job.id}
+                saved={savedJobIds.includes(job.id)}
+                matchScore={user ? (matchScores[job.id] ?? null) : null}
+                onSelect={() => setSelectedJobId(job.id === selectedJobId ? null : job.id)}
+                onToggleSave={() => toggleSave(job.id)}
+                onViewDetails={() => navigate('jobdetail', job.id)}
+              />
+            ))}
+            {sorted.length === 0 && (
+              <div className="text-center py-16 text-gray-400 text-sm">
+                No jobs found. Try adjusting your search or filters.
+              </div>
+            )}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-1 mt-6">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+                style={{ border: '1px solid #e5e7eb', borderRadius: 6 }}
+                className="px-3 py-1.5 text-sm text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+              >
+                Prev
+              </button>
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setCurrentPage(p)}
+                  style={{
+                    border: `1px solid ${p === currentPage ? '#0f2044' : '#e5e7eb'}`,
+                    background: p === currentPage ? '#0f2044' : '#fff',
+                    color: p === currentPage ? '#fff' : '#374151',
+                    borderRadius: 6,
+                  }}
+                  className="w-8 h-8 text-sm font-medium"
+                >
+                  {p}
+                </button>
+              ))}
+              {totalPages > 5 && <span className="text-gray-400 text-sm px-1">…</span>}
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(p => p + 1)}
+                style={{ border: '1px solid #e5e7eb', borderRadius: 6 }}
+                className="px-3 py-1.5 text-sm text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Map */}
+        {showMap && (
+          <div className="order-first w-full flex-shrink-0 lg:order-none lg:w-[380px] lg:max-w-[380px] lg:sticky lg:top-[70px] lg:self-start lg:max-h-[calc(100vh-88px)] lg:overflow-y-auto">
+            <div
+              style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}
+              className={
+                mapExpanded
+                  ? 'relative h-[500px]'
+                  : 'relative h-[200px] lg:h-[500px]'
+              }
+            >
+              <MapView
+                jobs={sorted}
+                selectedJobId={selectedJobId}
+                onSelectJob={id => setSelectedJobId(id === selectedJobId ? null : id)}
+                userLat={matchLat}
+                userLng={matchLng}
+                onMapClick={pinMode ? handleMapClick : null}
+                pinMode={pinMode}
+                minHeight={mapExpanded ? 400 : 0}
+                resizeSignal={mapExpanded}
+              />
+
+              {!mapExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setMapExpanded(true)}
+                  aria-label="Expand the job map"
+                  className="absolute inset-0 z-[1000] flex items-center justify-center lg:hidden"
+                  style={{ background: 'transparent' }}
+                >
+                  <span
+                    style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #d1d5db', borderRadius: 999 }}
+                    className="px-3 py-1 text-xs font-semibold text-gray-700 shadow-sm"
+                  >
+                    Tap to expand map
+                  </span>
+                </button>
+              )}
+            </div>
+
+            {mapExpanded && (
+              <button
+                type="button"
+                onClick={() => setMapExpanded(false)}
+                style={{ border: '1px solid #d1d5db', borderRadius: 8, background: '#fff' }}
+                className="mt-2 w-full py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 lg:hidden"
+              >
+                Collapse map
+              </button>
+            )}
+
+            {selectedJob && !mapExpanded && (
+              <div
+                style={{ border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', marginTop: 8 }}
+                className="p-4"
+              >
+                <div className="flex items-start gap-3 mb-2">
+                  <div style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6 }}
+                    className="w-10 h-10 flex items-center justify-center flex-shrink-0">
+                    <BuildingIcon />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between">
+                      <p className="font-semibold text-sm text-gray-900 leading-tight">{selectedJob.title}</p>
+                      <button onClick={() => toggleSave(selectedJob.id)}>
+                        <BookmarkIcon filled={savedJobIds.includes(selectedJob.id)} />
+                      </button>
+                    </div>
+                    <p style={{ color: '#16a34a' }} className="text-xs font-medium">{selectedJob.company}</p>
+                    <p className="text-xs text-gray-500">
+                      {selectedJob.barangay ?? selectedJob.city} • {selectedJob.salary}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mb-3 line-clamp-2">{selectedJob.description}</p>
+                <div className="flex gap-2">
+                  {selectedApplicationUrl ? (
+                    <a
+                      href={selectedApplicationUrl}
+                      target={selectedApplicationUrl.startsWith('mailto:') ? undefined : '_blank'}
+                      rel="noopener noreferrer"
+                      style={{ background: '#16a34a', color: '#fff', borderRadius: 6 }}
+                      className="flex-1 py-2 text-center text-sm font-semibold hover:bg-green-700"
+                    >
+                      Apply at Source
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => navigate('apply', selectedJob.id)}
+                      style={{ background: '#16a34a', color: '#fff', borderRadius: 6 }}
+                      className="flex-1 py-2 text-sm font-semibold hover:bg-green-700"
+                    >
+                      Apply Now
+                    </button>
+                  )}
+                  <button
+                    onClick={() => navigate('jobdetail', selectedJob.id)}
+                    style={{ border: '1px solid #d1d5db', borderRadius: 6 }}
+                    className="flex-1 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    View Details
+                  </button>
+                </div>
+
+                {/* Skill Match Breakdown — shown only when logged in */}
+                {user && (
+                  <PreviewSkillBreakdown
+                    job={selectedJob}
+                    getSkillBreakdown={getSkillBreakdown}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Preview Skill Match Breakdown ────────────────────────────────────────────
+// Reuses explainSkillMatch() via getSkillBreakdown() from context.
+// Does not duplicate or modify any matching logic.
+
+function PreviewSkillBreakdown({
+  job,
+  getSkillBreakdown,
+}: {
+  job: Job
+  getSkillBreakdown: (job: Job) => SkillMatchDetail[]
+}) {
+  const [open, setOpen] = useState(false)
+  const breakdown = getSkillBreakdown(job)
+  if (breakdown.length === 0) return null
+
+  const exact    = breakdown.filter(d => d.matchType === 'exact')
+  const ontology = breakdown.filter(d => d.matchType === 'ontology')
+  const missing  = breakdown.filter(d => d.matchType === 'missing')
+  const skillScore = Math.round(
+    breakdown.reduce((sum, d) => sum + d.similarity, 0) / breakdown.length * 100
+  )
+
+  return (
+    <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 10, paddingTop: 8 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          width: '100%', textAlign: 'left', background: 'none',
+          border: '1px solid #e5e7eb', borderRadius: 6,
+          cursor: 'pointer', padding: '7px 10px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+          Skill Match Breakdown
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 8px',
+            background: skillScore >= 70 ? '#dcfce7' : skillScore >= 40 ? '#fef9c3' : '#fee2e2',
+            color: skillScore >= 70 ? '#15803d' : skillScore >= 40 ? '#a16207' : '#b91c1c',
+          }}>
+            {skillScore}%
+          </span>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>{open ? '▲' : '▼'}</span>
+        </div>
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* Summary pills */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {exact.length > 0 && (
+              <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 999, fontSize: 10, padding: '1px 7px', fontWeight: 600 }}>
+                ✓ {exact.length} exact
+              </span>
+            )}
+            {ontology.length > 0 && (
+              <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 999, fontSize: 10, padding: '1px 7px', fontWeight: 600 }}>
+                ~ {ontology.length} ontology
+              </span>
+            )}
+            {missing.length > 0 && (
+              <span style={{ background: '#fee2e2', color: '#b91c1c', borderRadius: 999, fontSize: 10, padding: '1px 7px', fontWeight: 600 }}>
+                ✗ {missing.length} missing
+              </span>
+            )}
+          </div>
+
+          {/* Per-requirement rows */}
+          {breakdown.map((d, i) => {
+            const isExact    = d.matchType === 'exact'
+            const isOntology = d.matchType === 'ontology'
+            const isMissing  = d.matchType === 'missing'
+            const icon       = isExact ? '✓' : isOntology ? '~' : '✗'
+            const iconColor  = isExact ? '#15803d' : isOntology ? '#1d4ed8' : '#9ca3af'
+            const bg         = isExact ? '#f0fdf4' : isOntology ? '#eff6ff' : '#fafafa'
+            const border     = isExact ? '#bbf7d0' : isOntology ? '#bfdbfe' : '#e5e7eb'
+            return (
+              <div key={i} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 6, padding: '7px 9px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: iconColor }}>{icon}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>{d.required}</span>
+                      {d.bestMatch && (
+                        <>
+                          <span style={{ fontSize: 10, color: '#9ca3af' }}>←</span>
+                          <span style={{ fontSize: 11, color: '#374151' }}>{d.bestMatch}</span>
+                        </>
+                      )}
+                    </div>
+                    {isOntology && d.ontologyPath.length > 1 && (
+                      <div style={{ fontSize: 10, color: '#1d4ed8', marginTop: 2 }}>
+                        {d.ontologyPath.join(' → ')} ({d.distance} edge{d.distance !== 1 ? 's' : ''})
+                      </div>
+                    )}
+                    {isMissing && (
+                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>No match in your profile</div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: iconColor }}>
+                      {Math.round(d.similarity * 100)}%
+                    </div>
+                    <div style={{ fontSize: 9, color: '#9ca3af' }}>
+                      {isMissing ? 'no credit' : `1/(1+${d.distance})`}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Score reconciliation */}
+          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '7px 9px', fontSize: 11 }}>
+            <div style={{ fontWeight: 600, color: '#374151', marginBottom: 2 }}>Score calculation</div>
+            <div style={{ color: '#6b7280' }}>
+              ({breakdown.map((d, i) => (
+                <span key={i}>
+                  {i > 0 ? ' + ' : ''}
+                  <span style={{
+                    fontWeight: 600,
+                    color: d.matchType === 'missing' ? '#b91c1c' : d.matchType === 'exact' ? '#15803d' : '#1d4ed8',
+                  }}>{d.similarity.toFixed(2)}</span>
+                </span>
+              ))}) ÷ {breakdown.length} = <span style={{ fontWeight: 700, color: '#374151' }}>{skillScore}%</span>
+            </div>
+            <div style={{ color: '#9ca3af', fontSize: 10, marginTop: 4 }}>
+              Ontology graph gives partial credit for related skills.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SearchJobRow({
+  job, selected, saved, matchScore,
+  onSelect, onToggleSave, onViewDetails,
+}: {
+  job: Job
+  selected: boolean
+  saved: boolean
+  matchScore: number | null
+  onSelect: () => void
+  onToggleSave: () => void
+  onViewDetails: () => void
+}) {
+  const matchPct = matchScore != null ? Math.round(matchScore * 100) : null
+  const matchColor =
+    matchPct == null ? '#9ca3af'
+    : matchPct >= 70 ? '#16a34a'
+    : matchPct >= 40 ? '#d97706'
+    : '#dc2626'
+
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        background: '#fff',
+        border: `1px solid ${selected ? '#16a34a' : '#e5e7eb'}`,
+        borderRadius: 8,
+        cursor: 'pointer',
+      }}
+      className="p-4 hover:border-gray-300 transition-colors"
+    >
+      <div className="flex items-center gap-3">
+        <div style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6 }}
+          className="w-10 h-10 flex items-center justify-center flex-shrink-0">
+          <BuildingIcon />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <button
+                onClick={e => { e.stopPropagation(); onViewDetails() }}
+                className="font-semibold text-sm text-gray-900 hover:underline text-left"
+              >
+                {job.title}
+              </button>
+              <p style={{ color: '#16a34a' }} className="text-xs font-medium">{job.company}</p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {matchPct != null && (
+                <span style={{ color: matchColor, fontSize: 11, fontWeight: 600 }}>
+                  {matchPct}% match
+                </span>
+              )}
+              <span className="text-xs text-gray-400">
+                {job.daysAgo === 0 ? 'Just now' : job.daysAgo === 1 ? '1d ago' : `${job.daysAgo}d ago`}
+              </span>
+              <button
+                onClick={e => { e.stopPropagation(); onToggleSave() }}
+                className="hover:scale-110 transition-transform"
+              >
+                <BookmarkIcon filled={saved} />
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 items-center">
+            <span className="text-xs text-gray-500">
+              📍 {job.barangay ?? job.city}, Angeles City ({job.workArrangement})
+            </span>
+            <span className="text-xs text-gray-600 font-medium">{job.salary}</span>
+            {job.dataSource === 'prototype' && (
+              <span style={{ background: '#fef9c3', color: '#a16207', fontSize: 10, padding: '1px 5px', borderRadius: 3, border: '1px solid #fde047' }}>
+                Sample
+              </span>
+            )}
+            {job.dataSource === 'external-verified' && (
+              <span style={{ background: '#dcfce7', color: '#166534', fontSize: 10, padding: '1px 5px', borderRadius: 3, border: '1px solid #86efac' }}>
+                ✓ Verified
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,109 @@
+name: Docker package
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the tested image to Docker Hub
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobfinder-docker-package
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DOCKER_USERNAME: ${{ vars.DOCKER_USERNAME }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Validate publishing target
+        if: inputs.publish
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$DOCKER_USERNAME" = "gabmagat"
+      - name: Test application and Docker configuration
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          node --test docker/runtime-config.test.mjs
+      - name: Validate Compose and shell syntax
+        run: |
+          docker compose config --quiet
+          bash -n docker/entrypoint.sh
+      - name: Build image without uploading
+        run: docker build --build-arg VCS_REF="$GITHUB_SHA" --tag jobfinder:ci .
+      - name: Verify image excludes private local files
+        run: |
+          docker run --rm --entrypoint node jobfinder:ci --input-type=module -e "
+            import assert from 'node:assert/strict';
+            import { existsSync, readdirSync } from 'node:fs';
+            for (const p of ['/app/.env','/app/.git','/app/server/data','/app/server/uploads','/app/docs','/app/deploy']) {
+              assert.equal(existsSync(p), false, p);
+            }
+            assert.equal(existsSync('/data/jobfinder.sqlite'), false);
+            assert.deepEqual(readdirSync('/data/uploads'), []);
+            assert.notEqual(process.getuid(), 0);
+            console.log('Image is unprivileged and contains no local database or uploaded files');
+          "
+      - name: Start disposable evaluation container
+        run: |
+          docker run -d --name jobfinder-check --cap-drop ALL --security-opt no-new-privileges:true \
+            -p 127.0.0.1:8080:8080 -v jobfinder-ci-data:/data jobfinder:ci
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8080/api/health; then exit 0; fi
+            sleep 2
+          done
+          docker logs jobfinder-check
+          exit 1
+      - name: Exercise website, authentication and synthetic upload
+        run: node docker/smoke.mjs create
+      - name: Recreate container and check persisted data
+        run: |
+          docker stop --time 20 jobfinder-check
+          docker rm jobfinder-check
+          docker run -d --name jobfinder-check --cap-drop ALL --security-opt no-new-privileges:true \
+            -p 127.0.0.1:8080:8080 -v jobfinder-ci-data:/data jobfinder:ci
+          ready=0
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8080/api/health; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          node docker/smoke.mjs persisted
+      - name: Log in to Docker Hub
+        if: inputs.publish
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Publish the exact tested image
+        if: inputs.publish
+        run: |
+          image="$DOCKER_USERNAME/jobfinder"
+          docker tag jobfinder:ci "$image:sha-$GITHUB_SHA"
+          docker tag jobfinder:ci "$image:latest"
+          docker push "$image:sha-$GITHUB_SHA"
+          docker push "$image:latest"
+      - name: Container diagnostics on failure
+        if: failure()
+        run: docker logs jobfinder-check || true
+      - name: Remove disposable CI container and its synthetic data
+        if: always()
+        run: |
+          docker rm -f jobfinder-check || true
+          docker volume rm jobfinder-ci-data || true
